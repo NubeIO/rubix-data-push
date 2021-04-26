@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "rubix-data-push"
+version = "0.1.0"
+description = ""
+authors = ["NubeDev <aidan@enviroservices.com.au>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+SQLAlchemy = "^1.4.11"
+requests = "^2.25.1"
+psycopg2-binary = "^2.8.6"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

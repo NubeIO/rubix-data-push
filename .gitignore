@@ -1,3 +1,9 @@
+.idea
+
+out/config/config.json
+out/config/logging.conf
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -127,3 +133,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Local database
+data.db
+out/*
+!out/.gitkeep
+
+!docker/.env
+
+*.iml
