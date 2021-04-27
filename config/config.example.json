@@ -19,14 +19,5 @@
     "raw_topic": "rubix/lora_raw/raw",
     "publish_debug": true,
     "debug_topic": "rubix/lora_raw/debug"
-  },
-  "serial": {
-    "enabled": true,
-    "port": "/dev/ttyAMA0",
-    "baud_rate": 38400,
-    "stop_bits": 1,
-    "parity": "N",
-    "byte_size": 8,
-    "timeout": 5
   }
 }
