@@ -41,7 +41,7 @@ def cli(port, global_dir, data_dir, config_dir, identifier, prod, workers, setti
         'bind': '%s:%s' % ('0.0.0.0', setting.port),
         # 'workers': workers if workers is not None else number_of_workers() if prod else 1,
         'workers': 1,  # TODO: reimplement when multi-workers fixed
-        'logconfig': logging_conf,
+        # 'logconfig': logging_conf,
         'preload_app': False,
         'config': gunicorn_config
     }

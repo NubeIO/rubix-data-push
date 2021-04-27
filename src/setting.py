@@ -1,9 +1,7 @@
 import json
 import os
 from abc import ABC
-
 from flask import Flask
-from rubix_mqtt.setting import MqttSettingBase
 
 
 class BaseSetting(ABC):
@@ -18,36 +16,6 @@ class BaseSetting(ABC):
 
     def to_dict(self):
         return json.loads(self.serialize(pretty=False))
-
-
-class SerialSetting(BaseSetting):
-    KEY = 'serial'
-
-    def __init__(self):
-        self.enabled: bool = True
-        self.port: str = '/dev/ttyUSB0'
-        self.baud_rate = 9600
-        self.stop_bits = 1
-        self.parity: str = 'N'
-        self.byte_size = 8
-        self.timeout = 5
-        self.firmware_version = 'v1'
-        self.encryption_key = ''
-
-
-class MqttSetting(MqttSettingBase):
-    KEY = 'mqtt'
-
-    def __init__(self):
-        super().__init__()
-        self.name = 'lora-raw-mqtt'
-        self.attempt_reconnect_secs = 5
-        self.publish_value = True
-        self.topic = 'rubix/lora_raw/value'
-        self.publish_raw = True
-        self.raw_topic = 'rubix/lora_raw/raw'
-        self.publish_debug = True
-        self.debug_topic = 'rubix/lora_raw/debug'
 
 
 class AppSetting:
@@ -74,8 +42,6 @@ class AppSetting:
                                                self.__join_global_dir(AppSetting.default_config_dir))
         self.__identifier = kwargs.get('identifier') or AppSetting.default_identifier
         self.__prod = kwargs.get('prod') or False
-        self.__mqtt_setting = MqttSetting()
-        self.__serial_setting = SerialSetting()
 
     @property
     def port(self):
@@ -101,24 +67,14 @@ class AppSetting:
     def prod(self) -> bool:
         return self.__prod
 
-    @property
-    def mqtt(self) -> MqttSetting:
-        return self.__mqtt_setting
-
-    @property
-    def serial(self) -> SerialSetting:
-        return self.__serial_setting
-
     def serialize(self, pretty=True) -> str:
-        m = {MqttSetting.KEY: self.mqtt, SerialSetting.KEY: self.serial, 'prod': self.prod,
+        m = {'prod': self.prod,
              'global_dir': self.global_dir, 'data_dir': self.data_dir, 'config_dir': self.config_dir}
         return json.dumps(m, default=lambda o: o.to_dict() if isinstance(o, BaseSetting) else o.__dict__,
                           indent=2 if pretty else None)
 
     def reload(self, setting_file: str, is_json_str: bool = False):
         data = self.__read_file(setting_file, self.__config_dir, is_json_str)
-        self.__mqtt_setting = self.__mqtt_setting.reload(data.get(MqttSetting.KEY, None))
-        self.__serial_setting = self.__serial_setting.reload(data.get(SerialSetting.KEY, None))
         return self
 
     def init_app(self, app: Flask):
