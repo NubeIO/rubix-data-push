@@ -1,8 +1,8 @@
 import json
 import os
 from abc import ABC
+
 from flask import Flask
-from rubix_mqtt.setting import MqttSettingBase
 
 
 class BaseSetting(ABC):
@@ -17,22 +17,6 @@ class BaseSetting(ABC):
 
     def to_dict(self):
         return json.loads(self.serialize(pretty=False))
-
-
-class MqttSetting(MqttSettingBase):
-    KEY = 'mqtt'
-
-    def __init__(self):
-        super().__init__()
-        self.name = 'lora-raw-mqtt'
-        self.attempt_reconnect_secs = 5
-        self.publish_value = True
-        self.topic = 'rubix/lora_raw/value'
-        self.publish_raw = True
-        self.raw_topic = 'rubix/lora_raw/raw'
-        self.publish_debug = True
-        self.debug_topic = 'rubix/lora_raw/debug'
-
 
 
 class AppSetting:
