@@ -12,7 +12,7 @@ RUN $HOME/.poetry/bin/poetry install
 ADD src src
 ADD config config
 ADD run.py ./
-RUN $HOME/.poetry/bin/poetry run pyinstaller run.py -n rubix-lora --clean --onefile \
+RUN $HOME/.poetry/bin/poetry run pyinstaller run.py -n rubix-data-push --clean --onefile \
     --add-data pyproject.toml:. \
     --add-data config:config
 
@@ -26,7 +26,7 @@ ARG COMMIT_SHA=$COMMIT_SHA
 
 LABEL maintainer=$MAINTAINER version=$APP_VERSION commit=$COMMIT_SHA
 
-ENV RUBIX_LORA_DATA=/data/rubix-lora
+ENV RUBIX_DATA_PUSH_DATA=/data/rubix-data-push
 
 RUN groupadd -g $NUBEIO_GID nubeio \
     && useradd -u $RUBIX_UID -G nubeio rubix \
@@ -34,12 +34,12 @@ RUN groupadd -g $NUBEIO_GID nubeio \
     && chown -R rubix:nubeio $RUBIX_LORA_DATA
 
 WORKDIR /usr/src/app/
-COPY --chown=rubix:nubeio --from=build /usr/src/app/dist/rubix-lora ./
+COPY --chown=rubix:nubeio --from=build /usr/src/app/dist/rubix-data-push ./
 
 USER rubix:nubeio
 
-VOLUME $RUBIX_LORA_DATA
+VOLUME $RUBIX_DATA_PUSH_DATA
 
-EXPOSE 1919
+EXPOSE 2020
 
-ENTRYPOINT [ "./rubix-lora" ]
+ENTRYPOINT [ "./rubix-data-push" ]

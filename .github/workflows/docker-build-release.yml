@@ -1,0 +1,182 @@
+name: build-release
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened, closed ]
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+
+env:
+  APP_NAME: rubix-data-push
+  GHCR_IMAGE: ghcr.io/nubeio/rubix-data-push
+  PLATFORMS: linux/amd64,linux/arm/v7
+
+jobs:
+
+  context:
+    runs-on: ubuntu-latest
+
+    outputs:
+      shouldBuild: ${{ steps.context.outputs.decision_build }}
+      shouldPublish: ${{ steps.context.outputs.decision_publish }}
+      isRelease: ${{ steps.context.outputs.isTag }}
+      afterRelease: ${{ steps.context.outputs.isAfterMergedReleasePR }}
+      sha: ${{ steps.context.outputs.commitId }}
+      version: ${{ steps.context.outputs.version }}
+      fqn: ${{ env.APP_NAME }}-${{ steps.context.outputs.version }}-${{ steps.context.outputs.shortCommitId }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.NUBEIO_CI_GITHUBPROJECT_TOKEN }}
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v3
+        with:
+          git-user-signingkey: true
+          git-commit-gpgsign: true
+          git-tag-gpgsign: true
+          git-push-gpgsign: false
+          gpg-private-key: ${{ secrets.NUBEIO_CI_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.NUBEIO_CI_GPG_PASSPHARSE }}
+
+      - name: Project context
+        id: context
+        uses: zero88/gh-project-context@v1
+        with:
+          dry: false
+          mustSign: true
+          defaultBranch: master
+
+  build:
+    runs-on: ubuntu-latest
+    needs: context
+    if: needs.context.outputs.shouldBuild == 'true'
+    services:
+      registry:
+        image: zero88/gh-registry:latest
+        ports:
+          - 5000:5000
+        options: >-
+          -v /home/runner:/var/lib/registry
+          --name registry
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Fallback version to deal with GitHub Cache
+        run: sed -i "0,/${{ needs.context.outputs.version }}/s//0.0.0/" pyproject.toml
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /home/runner/docker
+          key: ${{ runner.os }}-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Validate cache
+        run: |
+          docker buildx imagetools inspect localhost:5000/${{ env.APP_NAME }}:buildcache || echo "Not Found"
+
+      - name: Docker meta
+        id: docker_meta
+        uses: crazy-max/ghaction-docker-meta@v1
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          tag-latest: true
+          tag-sha: true
+          tag-semver: |
+            {{version}}
+            {{major}}.{{minor}}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+        with:
+          driver-opts: network=host
+
+      - name: Build artifact by docker
+        uses: docker/build-push-action@v2
+        if: ${{ needs.context.outputs.isRelease == 'true' }}
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          build-args: |
+            BASE_IMAGE_VERSION=3.9
+            APP_VERSION=${{ needs.context.outputs.version }}
+            COMMIT_SHA=${{ needs.context.outputs.sha }}
+          cache-from: type=registry,ref=localhost:5000/${{ env.APP_NAME }}:buildcache
+          cache-to: type=registry,ref=localhost:5000/${{ env.APP_NAME }}:buildcache,mode=max
+          tags: localhost:5000/${{ env.APP_NAME }}:${{ needs.context.outputs.sha }}
+          pull: true
+          push: true
+
+      - name: Zip artifacts
+        if: ${{ needs.context.outputs.isRelease == 'true' }}
+        run: |
+          image=localhost:5000/${{ env.APP_NAME }}:${{ needs.context.outputs.sha }}
+          output=/usr/src/app/
+          mkdir -p /tmp/zip /tmp/images
+          IFS=',' read -ra ARR <<< "${{ env.PLATFORMS }}"
+          for plat in "${ARR[@]}"; do
+            p=$(echo "${plat//\//}")
+            p=$(echo "${p//linux/}")
+            perImage=$(docker buildx imagetools inspect $image | grep -B 2 $plat | grep Name: | awk '{print $2}')
+            artifact=${{ needs.context.outputs.fqn }}.$p
+            folder=/tmp/images/$artifact
+            docker create --name $artifact $perImage && docker cp $artifact:$output $folder && docker rm $artifact
+            cd $folder; zip -r /tmp/zip/$artifact.zip ./; cd -
+          done
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.NUBEIO_CI_GITHUB_PACKAGES_PAT }}
+
+      - name: Docker build
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          build-args: |
+            BASE_IMAGE_VERSION=3.9
+            APP_VERSION=${{ needs.context.outputs.version }}
+            COMMIT_SHA=${{ needs.context.outputs.sha }}
+          cache-from: type=registry,ref=localhost:5000/${{ env.APP_NAME }}:buildcache
+          cache-to: type=registry,ref=localhost:5000/${{ env.APP_NAME }}:buildcache,mode=max
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          pull: true
+          push: true
+
+      - name: Cleanup Docker build cache if any
+        run: |
+          docker buildx imagetools inspect localhost:5000/${{ env.APP_NAME }}:buildcache
+          echo "======================================================"
+          docker buildx prune --filter until=72h --keep-storage 5GB -f
+
+      - name: Create Release
+        if: ${{ needs.context.outputs.isRelease == 'true' }}
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.context.outputs.version }}
+          name: Release v${{ needs.context.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            /tmp/zip/${{ needs.context.outputs.fqn }}.*.zip
