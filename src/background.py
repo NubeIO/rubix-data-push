@@ -1,8 +1,7 @@
 import logging
 from threading import Thread
-
 from flask import current_app
-
+from src.services.sch import startSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -26,22 +25,9 @@ class FlaskThread(Thread):
 class Background:
     @staticmethod
     def run():
-        # from src.lora import SerialConnectionListener
-        # from src.mqtt import MqttClient
-        # setting: AppSetting = current_app.config[AppSetting.FLASK_KEY]
-        # logger.info("Running Background Task...")
-        # if setting.mqtt.enabled:
-        #     MqttClient().start(setting.mqtt)
-
-
-
+        startSchedule(5)
         Background.sync_on_start()
-
-
 
     @staticmethod
     def sync_on_start():
         print("sync_on_start")
-        # from .models.model_point_store import PointStoreModel
-        # """Sync mapped points values from LoRa > Generic | BACnet points values"""
-        # PointStoreModel.sync_points_values_lp_to_gbp_process()
