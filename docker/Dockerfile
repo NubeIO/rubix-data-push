@@ -26,19 +26,19 @@ ARG COMMIT_SHA=$COMMIT_SHA
 
 LABEL maintainer=$MAINTAINER version=$APP_VERSION commit=$COMMIT_SHA
 
-ENV RUBIX_DATA_PUSH_DATA=/data/rubix-data-push
+ENV RUBIX_VOLUME=/data/rubix-data-push
 
 RUN groupadd -g $NUBEIO_GID nubeio \
     && useradd -u $RUBIX_UID -G nubeio rubix \
-    && mkdir -p $RUBIX_LORA_DATA \
-    && chown -R rubix:nubeio $RUBIX_LORA_DATA
+    && mkdir -p $RUBIX_VOLUME \
+    && chown -R rubix:nubeio $RUBIX_VOLUME
 
 WORKDIR /usr/src/app/
 COPY --chown=rubix:nubeio --from=build /usr/src/app/dist/rubix-data-push ./
 
 USER rubix:nubeio
 
-VOLUME $RUBIX_DATA_PUSH_DATA
+VOLUME $RUBIX_VOLUME
 
 EXPOSE 2020
 
