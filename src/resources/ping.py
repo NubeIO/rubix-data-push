@@ -32,8 +32,8 @@ class Ping(RubixResource):
         up_hour = up_time / 3600
         up_hour = round(up_hour, 2)
         up_hour = str(up_hour)
-        from src import AppSetting
-        setting: AppSetting = current_app.config[AppSetting.FLASK_KEY]
+        # from src import AppSetting
+        # setting: AppSetting = current_app.config[AppSetting.FLASK_KEY]
         return {
             'version': get_version(),
             'up_time_date': up_time_date,
