@@ -1,7 +1,7 @@
 import logging
 from threading import Thread
 from flask import current_app
-from src.services.sch import startSchedule
+from src.services.sch import start_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class FlaskThread(Thread):
 class Background:
     @staticmethod
     def run():
-        startSchedule(5)
+        start_schedule(5)
         Background.sync_on_start()
 
     @staticmethod
