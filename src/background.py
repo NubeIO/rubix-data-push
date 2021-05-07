@@ -1,7 +1,8 @@
 import logging
 from threading import Thread
 from flask import current_app
-from src.services.sch import start_schedule
+
+from .setting import AppSetting
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,10 @@ class FlaskThread(Thread):
 class Background:
     @staticmethod
     def run():
-        start_schedule(5)
+        setting: AppSetting = current_app.config[AppSetting.FLASK_KEY]
+        from src.services.sync.postgresql import PostgreSQL
+        FlaskThread(target=PostgreSQL().setup, daemon=True,
+                    kwargs={'config': setting.postgres}).start()
         Background.sync_on_start()
 
     @staticmethod
