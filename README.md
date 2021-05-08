@@ -63,3 +63,6 @@ Options:
   -h, --help               Show this message and exit.
 ```
 
+## Example
+
+[This is an example for dumping output](./src/example.json)

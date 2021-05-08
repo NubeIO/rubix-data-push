@@ -88,27 +88,69 @@ class PostgreSQL(metaclass=Singleton):
             logger.error(f'Connection Error: {str(e)}')
 
     def sync(self):
+        """See the payload example in README"""
         wires_plats = self.get_wires_plat()
         payload = {}
         postgres_sync_logs = []
         for wires_plat in wires_plats:
-            (global_uuid, site_id, device_id) = wires_plat
+            (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
+             site_lon, time_zone, device_id, device_name) = wires_plat
             points_values = self.get_points_values(global_uuid)
-            points_values_list = []
-            for row in points_values:
-                history = {
-                    "ts": str(row["ts"]),
-                    "point_uuid": row["point_uuid"],
-                    "point_name": row["point_name"],
-                    "value": str(row["value"])
-                }
-                points_values_list.append(history)
-            if len(points_values_list) > 0:
+            if len(points_values) > 0:
                 last_sync_id = points_values[0]['id']
                 postgres_sync_logs.append({"global_uuid": global_uuid, "last_sync_id": last_sync_id})
-                payload[site_id] = {**payload[site_id], device_id: points_values_list} if payload.get(site_id) else {
-                    device_id: points_values_list}
+            for row in points_values:
+                network_uuid: str = row["network_uuid"]
+                network_name: str = row["network_name"]
+                device_uuid: str = row["device_uuid"]
+                device_name: str = row["device_name"]
+                point_uuid: str = row["point_uuid"]
+                point_name: str = row["point_name"]
+                if not payload.get(site_id):
+                    payload[site_id] = {
+                        'site_name': site_name,
+                        'site_address': site_address,
+                        'site_city': site_city,
+                        'site_state': site_state,
+                        'site_zip': site_zip,
+                        'site_country': site_country,
+                        'site_lat': site_lat,
+                        'site_lon': site_lon,
+                        'time_zone': time_zone,
+                        'devices': {}
+                    }
+                if not payload[site_id]['devices'].get(device_id):
+                    payload[site_id]['devices'][device_id] = {
+                        'name': device_name,
+                        'rubix_networks': {}
+                    }
+                if not payload[site_id]['devices'][device_id]['rubix_networks'].get(network_uuid):
+                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid] = {
+                        'name': network_name,
+                        'rubix_devices': {}
+                    }
+                if not payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'].get(
+                        device_uuid):
+                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
+                        device_uuid] = {
+                        'name': device_name,
+                        'rubix_points': {}
+                    }
 
+                point_values = payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
+                    device_uuid]['rubix_points'].get(point_uuid)
+                point_value = {
+                    "ts": str(row["ts"]),
+                    "value": str(row["value"])
+                }
+                if not point_values:
+                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
+                        device_uuid]['rubix_points'][point_uuid] = {
+                        'name': point_name,
+                        'values': []
+                    }
+                else:
+                    point_values['values'].append(point_value)
         try:
             if payload:
                 json_payload = json.dumps(payload)
@@ -124,7 +166,8 @@ class PostgreSQL(metaclass=Singleton):
             logger.error(str(e))
 
     def get_wires_plat(self):
-        query = f'SELECT global_uuid, site_id, device_id ' \
+        query = f'SELECT global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, ' \
+                f'site_country, site_lat, site_lon, time_zone, device_id, device_name ' \
                 f'FROM {self.__wires_plat_table_name} ' \
                 f'WHERE client_id = %s'
         with self.__client:
@@ -136,8 +179,8 @@ class PostgreSQL(metaclass=Singleton):
                     logger.error((str(e)))
 
     def get_points_values(self, global_uuid):
-        query = f'SELECT tpv.id ,tpv.ts_value as ts, tp.point_uuid, tp.name as point_name, ' \
-                f'tpv.value ' \
+        query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.point_uuid, tp.name as point_name, ' \
+                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, td.name as network_name ' \
                 f'FROM {self.__points_values_table_name} tpv ' \
                 f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.point_uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
