@@ -13,26 +13,5 @@
     "client_id": "",
     "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",
     "token": "token"
-  },
-  "mqtt": {
-    "enabled": true,
-    "name": "lora-raw-mqtt",
-    "host": "0.0.0.0",
-    "port": 1883,
-    "authentication": false,
-    "username": "username",
-    "password": "password",
-    "keepalive": 60,
-    "qos": 1,
-    "retain": false,
-    "attempt_reconnect_on_unavailable": true,
-    "attempt_reconnect_secs": 5,
-    "timeout": 10,
-    "publish_value": true,
-    "topic": "rubix/lora_raw/value",
-    "publish_raw": true,
-    "raw_topic": "rubix/lora_raw/raw",
-    "publish_debug": true,
-    "debug_topic": "rubix/lora_raw/debug"
   }
 }
