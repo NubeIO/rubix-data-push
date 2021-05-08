@@ -50,7 +50,21 @@ class PostgreSQL(metaclass=Singleton):
             self.connect()
             time.sleep(self.config.attempt_reconnect_secs)
         if self.status():
-            logger.info("Registering PostgreSQL for scheduler sync")
+            logger.info("Registering PostgreSQL for scheduler sync...")
+            logger.info("Followings are the configurations:")
+            logger.info(f"   host: {self.config.host}")
+            logger.info(f"   port: {self.config.port}")
+            logger.info(f"   dbname: {self.config.dbname}")
+            logger.info(f"   user: {self.config.user}")
+            logger.info(f"   password: ***")
+            logger.info(f"   ssl_mode: {self.config.ssl_mode}")
+            logger.info(f"   connect_timeout: {self.config.connect_timeout}")
+            logger.info(f"   timer: {self.config.timer} {'minute' if self.config.timer == 1 else 'minutes'}")
+            logger.info(f"   table_prefix: {self.config.table_prefix}")
+            logger.info(f"   attempt_reconnect_secs: {self.config.attempt_reconnect_secs}")
+            logger.info(f"   client_id: {self.config.client_id}")
+            logger.info(f"   client_url: {self.config.client_url}")
+            logger.info(f"   token: ***")
             # schedule.every(5).seconds.do(self.sync)  # for testing
             schedule.every(self.config.timer).minutes.do(self.sync)
             while True:
@@ -98,12 +112,14 @@ class PostgreSQL(metaclass=Singleton):
         try:
             if payload:
                 json_payload = json.dumps(payload)
-                logger.debug(f"Payload: {json_payload}")
+                logger.info(f"Payload: {json_payload}")
                 resp = requests.post(self.__client_token_url, json=json_payload)
-                for log in postgres_sync_logs:
-                    PostgersSyncLogModel(global_uuid=log.get("global_uuid"),
-                                         last_sync_id=log.get("last_sync_id")).update_last_sync_id()
-                logger.info(f"Response: ${resp.content}")
+                if 200 <= resp.status_code < 300:
+                    logger.info(f"Updating postgres_sync_logs: {postgres_sync_logs}")
+                    for log in postgres_sync_logs:
+                        PostgersSyncLogModel(global_uuid=log.get("global_uuid"),
+                                             last_sync_id=log.get("last_sync_id")).update_last_sync_id()
+                logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
             logger.error(str(e))
 

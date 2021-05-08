@@ -30,8 +30,3 @@ class Background:
         from src.services.sync.postgresql import PostgreSQL
         FlaskThread(target=PostgreSQL().setup, daemon=True,
                     kwargs={'config': setting.postgres}).start()
-        Background.sync_on_start()
-
-    @staticmethod
-    def sync_on_start():
-        print("sync_on_start")
