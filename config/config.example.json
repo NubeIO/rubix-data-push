@@ -1,4 +1,19 @@
 {
+  "postgres": {
+    "host": "0.0.0.0",
+    "port": 5432,
+    "dbname": "db",
+    "user": "user",
+    "password": "password",
+    "ssl_mode": "allow",
+    "connect_timeout": 5,
+    "timer": 5,
+    "table_prefix": "tbl",
+    "attempt_reconnect_secs": 5,
+    "client_id": "",
+    "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",
+    "token": "token"
+  },
   "mqtt": {
     "enabled": true,
     "name": "lora-raw-mqtt",

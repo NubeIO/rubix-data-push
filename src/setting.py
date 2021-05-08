@@ -19,6 +19,25 @@ class BaseSetting(ABC):
         return json.loads(self.serialize(pretty=False))
 
 
+class PostgresSetting(BaseSetting):
+    KEY = 'postgres'
+
+    def __init__(self):
+        self.host = '127.0.0.1'
+        self.port = 5432
+        self.dbname = 'db'
+        self.user = 'user1'
+        self.password = 'root'
+        self.ssl_mode = 'allow'
+        self.connect_timeout = 5
+        self.timer = 5
+        self.table_prefix = 'tbl'
+        self.attempt_reconnect_secs = 5
+        self.client_id = ''
+        self.client_url = ''
+        self.token = ''
+
+
 class AppSetting:
     PORT = 2020
     FLASK_KEY: str = 'APP_SETTING'
@@ -43,6 +62,7 @@ class AppSetting:
                                                self.__join_global_dir(AppSetting.default_config_dir))
         self.__identifier = kwargs.get('identifier') or AppSetting.default_identifier
         self.__prod = kwargs.get('prod') or False
+        self.__postgres_setting = PostgresSetting()
 
     @property
     def port(self):
@@ -68,6 +88,10 @@ class AppSetting:
     def prod(self) -> bool:
         return self.__prod
 
+    @property
+    def postgres(self) -> PostgresSetting:
+        return self.__postgres_setting
+
     def serialize(self, pretty=True) -> str:
         m = {'prod': self.prod,
              'global_dir': self.global_dir, 'data_dir': self.data_dir, 'config_dir': self.config_dir}
@@ -76,6 +100,7 @@ class AppSetting:
 
     def reload(self, setting_file: str, is_json_str: bool = False):
         data = self.__read_file(setting_file, self.__config_dir, is_json_str)
+        self.__postgres_setting = self.__postgres_setting.reload(data.get(PostgresSetting.KEY))
         return self
 
     def init_app(self, app: Flask):
