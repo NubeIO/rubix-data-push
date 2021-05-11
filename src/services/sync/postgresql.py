@@ -180,10 +180,10 @@ class PostgreSQL(metaclass=Singleton):
                     logger.error((str(e)))
 
     def get_points_values(self, global_uuid):
-        query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.point_uuid, tp.name as point_name, ' \
+        query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
                 f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
                 f'FROM {self.__points_values_table_name} tpv ' \
-                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.point_uuid ' \
+                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
                 f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
