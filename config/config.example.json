@@ -9,6 +9,7 @@
     "connect_timeout": 5,
     "timer": 5,
     "table_prefix": "tbl",
+    "discard_null": false,
     "attempt_reconnect_secs": 5,
     "client_id": "",
     "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",

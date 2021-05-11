@@ -24,6 +24,9 @@ class PostgreSQL(metaclass=Singleton):
         self.__devices_table_name: str = ''
         self.__points_table_name: str = ''
         self.__points_values_table_name: str = ''
+        self.__devices_tags_table_name: str = ''
+        self.__networks_tags_table_name: str = ''
+        self.__points_tags_table_name: str = ''
         self.__client_token_url: str = ''
         self.__is_connected = False
 
@@ -44,6 +47,9 @@ class PostgreSQL(metaclass=Singleton):
         self.__devices_table_name: str = f'{self.config.table_prefix}_devices'
         self.__points_table_name: str = f'{self.config.table_prefix}_points'
         self.__points_values_table_name: str = f'{self.__points_table_name}_values'
+        self.__devices_tags_table_name: str = f'{self.__devices_table_name}_tags'
+        self.__networks_tags_table_name: str = f'{self.__networks_table_name}_tags'
+        self.__points_tags_table_name: str = f'{self.__points_table_name}_tags'
         self.__client_token_url = f'{self.config.client_url}?token={self.config.token}'
 
         while not self.status():
@@ -61,6 +67,7 @@ class PostgreSQL(metaclass=Singleton):
             logger.info(f"   connect_timeout: {self.config.connect_timeout}")
             logger.info(f"   timer: {self.config.timer} {'minute' if self.config.timer == 1 else 'minutes'}")
             logger.info(f"   table_prefix: {self.config.table_prefix}")
+            logger.info(f"   discard_null: {self.config.discard_null}")
             logger.info(f"   attempt_reconnect_secs: {self.config.attempt_reconnect_secs}")
             logger.info(f"   client_id: {self.config.client_id}")
             logger.info(f"   client_url: {self.config.client_url}")
@@ -141,7 +148,7 @@ class PostgreSQL(metaclass=Singleton):
                     device_uuid]['rubix_points'].get(point_uuid)
                 point_value = {
                     "ts": str(row["ts"]),
-                    "value": str(row["value"])
+                    "value": None if row["value"] is None else float(row["value"])
                 }
                 if not point_values:
                     payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
@@ -153,6 +160,29 @@ class PostgreSQL(metaclass=Singleton):
                     point_values['values'].append(point_value)
         try:
             if payload:
+                for site_id in payload.keys():
+                    site: dict = payload[site_id]
+                    for device_id in site['devices'].keys():
+                        device: dict = site['devices'][device_id]
+                        for network_uuid in device['rubix_networks'].keys():
+                            rubix_network: dict = device['rubix_networks'][network_uuid]
+                            device['rubix_networks'][network_uuid] = {
+                                **rubix_network,
+                                'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid)
+                            }
+                            for device_uuid in rubix_network['rubix_devices'].keys():
+                                rubix_device: dict = rubix_network['rubix_devices'][device_uuid]
+                                rubix_network['rubix_devices'][device_uuid] = {
+                                    **rubix_device,
+                                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid)
+                                }
+                                for point_uuid in rubix_device['rubix_points'].keys():
+                                    rubix_point: dict = rubix_device['rubix_points'][point_uuid]
+                                    rubix_device['rubix_points'][point_uuid] = {
+                                        **rubix_point,
+                                        'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid)
+                                    }
+
                 json_payload = json.dumps(payload)
                 logger.info(f"Payload: {json_payload}")
                 resp = requests.post(self.__client_token_url, json=json_payload)
@@ -164,6 +194,21 @@ class PostgreSQL(metaclass=Singleton):
                 logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
             logger.error(str(e))
+
+    def get_tags(self, table_name: str, column_name: str, uuid: str):
+        query = f'SELECT tag_name, tag_value ' \
+                f'FROM {table_name} ' \
+                f'WHERE {column_name} = %s'
+        with self.__client:
+            with self.__client.cursor() as curs:
+                try:
+                    curs.execute(query, (uuid,))
+                    output = {}
+                    for (key, value) in curs.fetchall():
+                        output[key] = value
+                    return output
+                except psycopg2.Error as e:
+                    logger.error((str(e)))
 
     def get_wires_plat(self):
         query = f'SELECT global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, ' \
@@ -179,13 +224,14 @@ class PostgreSQL(metaclass=Singleton):
                     logger.error((str(e)))
 
     def get_points_values(self, global_uuid):
-        query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.point_uuid, tp.name as point_name, ' \
-                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, td.name as network_name ' \
+        query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
+                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
                 f'FROM {self.__points_values_table_name} tpv ' \
-                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.point_uuid ' \
+                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
                 f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
+                f'{"and tpv.value is not null " if self.config.discard_null else ""}' \
                 f'ORDER BY tpv.id DESC;'
 
         with self.__client:
