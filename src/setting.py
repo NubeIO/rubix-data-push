@@ -32,6 +32,7 @@ class PostgresSetting(BaseSetting):
         self.connect_timeout = 5
         self.timer = 5
         self.table_prefix = 'tbl'
+        self.discard_null = False
         self.attempt_reconnect_secs = 5
         self.client_id = ''
         self.client_url = ''

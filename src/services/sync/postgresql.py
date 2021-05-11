@@ -61,6 +61,7 @@ class PostgreSQL(metaclass=Singleton):
             logger.info(f"   connect_timeout: {self.config.connect_timeout}")
             logger.info(f"   timer: {self.config.timer} {'minute' if self.config.timer == 1 else 'minutes'}")
             logger.info(f"   table_prefix: {self.config.table_prefix}")
+            logger.info(f"   discard_null: {self.config.discard_null}")
             logger.info(f"   attempt_reconnect_secs: {self.config.attempt_reconnect_secs}")
             logger.info(f"   client_id: {self.config.client_id}")
             logger.info(f"   client_url: {self.config.client_url}")
@@ -141,7 +142,7 @@ class PostgreSQL(metaclass=Singleton):
                     device_uuid]['rubix_points'].get(point_uuid)
                 point_value = {
                     "ts": str(row["ts"]),
-                    "value": str(row["value"])
+                    "value": None if row["value"] is None else float(row["value"])
                 }
                 if not point_values:
                     payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
@@ -180,12 +181,13 @@ class PostgreSQL(metaclass=Singleton):
 
     def get_points_values(self, global_uuid):
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.point_uuid, tp.name as point_name, ' \
-                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, td.name as network_name ' \
+                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
                 f'FROM {self.__points_values_table_name} tpv ' \
                 f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.point_uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
                 f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
+                f'{"and tpv.value is not null " if self.config.discard_null else ""}' \
                 f'ORDER BY tpv.id DESC;'
 
         with self.__client:
