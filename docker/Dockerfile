@@ -11,9 +11,10 @@ RUN $HOME/.poetry/bin/poetry install
 
 ADD src src
 ADD config config
-ADD run.py ./
+ADD run.py VERSION ./
 RUN $HOME/.poetry/bin/poetry run pyinstaller run.py -n rubix-data-push --clean --onefile \
     --add-data pyproject.toml:. \
+    --add-data VERSION:. \
     --add-data config:config
 
 FROM python:$BASE_IMAGE_VERSION-slim
