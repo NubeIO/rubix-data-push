@@ -1,75 +1,80 @@
 {
-  "site_id": {
-    "site_name": "site_name",
-    "site_address": "site_address",
-    "site_city": "site_city",
-    "site_state": "site_state",
-    "site_zip": "site_zip",
-    "site_country": "site_country",
-    "site_lat": "site_lat",
-    "site_lon": "site_lon",
-    "time_zone": "Australia/Sydney",
-    "devices": {
-      "device_id": {
-        "name": "test_device",
-        "rubix_networks": {
-          "e38805c2-4255-48b6-85db-fb8720aa642f": {
-            "name": "test_device",
-            "rubix_devices": {
-              "0e007cd5-ec20-4f27-ba46-5c165cf12133": {
-                "name": "test_device",
-                "rubix_points": {
-                  "6053cb8a-1497-4217-9c23-b836bd56e385": {
-                    "name": "test_point",
-                    "values": [
-                      {
-                        "ts": "2021-05-08 11:35:00",
-                        "value": "5.0"
-                      },
-                      {
-                        "ts": "2021-05-08 11:34:00",
-                        "value": "5.0"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
+  "site_id": "site_id",
+  "site_name": "site_name",
+  "site_address": "site_address",
+  "site_city": "site_city",
+  "site_state": "site_state",
+  "site_zip": "site_zip",
+  "site_country": "site_country",
+  "site_lat": "site_lat",
+  "site_lon": "site_lon",
+  "time_zone": "Australia/Sydney",
+  "device_id": "device_id",
+  "device_name": "device_name",
+  "rubix_networks": {
+    "e38805c2-4255-48b6-85db-fb8720aa642f": {
+      "name": "test_device",
+      "tags": {
+        "network_tag_example": "network_tag_example"
+      },
+      "rubix_devices": {
+        "0e007cd5-ec20-4f27-ba46-5c165cf12133": {
+          "name": "test_device",
+          "tags": {
+            "device_tag_example": "device_tag_example"
           },
-          "8b3acecc-5943-4906-af71-8abcb0d842a8": {
-            "name": "test",
-            "rubix_devices": {
-              "683295ec-3d00-4396-a61c-b96da8cb1317": {
-                "name": "test",
-                "rubix_points": {
-                  "a393347f-3ca0-4ea5-b82d-b2cddcd81d0b": {
-                    "name": "pnt2",
-                    "values": [
-                      {
-                        "ts": "2021-05-08 11:35:00",
-                        "value": "11.0"
-                      },
-                      {
-                        "ts": "2021-05-08 11:34:00",
-                        "value": "11.0"
-                      }
-                    ]
-                  },
-                  "ed999cb4-a7de-4b22-8374-984ea383e92f": {
-                    "name": "pnt1",
-                    "values": [
-                      {
-                        "ts": "2021-05-08 11:35:00",
-                        "value": "10.0"
-                      },
-                      {
-                        "ts": "2021-05-08 11:34:00",
-                        "value": "10.0"
-                      }
-                    ]
-                  }
+          "rubix_points": {
+            "6053cb8a-1497-4217-9c23-b836bd56e385": {
+              "name": "test_point",
+              "tags": {
+                "point_tag_example": "point_tag_example"
+              },
+              "values": [
+                {
+                  "ts": "2021-05-08 11:35:00",
+                  "value": "5.0"
+                },
+                {
+                  "ts": "2021-05-08 11:34:00",
+                  "value": "5.0"
                 }
-              }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "8b3acecc-5943-4906-af71-8abcb0d842a8": {
+      "name": "test",
+      "rubix_devices": {
+        "683295ec-3d00-4396-a61c-b96da8cb1317": {
+          "name": "test",
+          "rubix_points": {
+            "a393347f-3ca0-4ea5-b82d-b2cddcd81d0b": {
+              "name": "pnt2",
+              "values": [
+                {
+                  "ts": "2021-05-08 11:35:00",
+                  "value": "11.0"
+                },
+                {
+                  "ts": "2021-05-08 11:34:00",
+                  "value": "11.0"
+                }
+              ]
+            },
+            "ed999cb4-a7de-4b22-8374-984ea383e92f": {
+              "name": "pnt1",
+              "values": [
+                {
+                  "ts": "2021-05-08 11:35:00",
+                  "value": "10.0"
+                },
+                {
+                  "ts": "2021-05-08 11:34:00",
+                  "value": "10.0"
+                }
+              ]
             }
           }
         }
