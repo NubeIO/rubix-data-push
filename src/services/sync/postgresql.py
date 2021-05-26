@@ -160,8 +160,8 @@ class PostgreSQL(metaclass=Singleton):
     def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
         try:
             logger.info(f"Payload: {json_payload}")
-            resp = requests.post(self.__client_token_url, json=json_payload)
-            if 200 <= resp.status_code < 300:
+            resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
+            if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
                 logger.info(f"Updating postgres_sync_logs with global_uuid={global_uuid} & last_sync_id={last_sync_id}")
                 PostgersSyncLogModel(global_uuid=global_uuid,
                                      last_sync_id=last_sync_id).update_last_sync_id()

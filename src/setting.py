@@ -37,6 +37,7 @@ class PostgresSetting(BaseSetting):
         self.client_id = ''
         self.client_url = ''
         self.token = ''
+        self.verify_ssl = False
 
 
 class AppSetting:
