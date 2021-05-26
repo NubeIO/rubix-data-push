@@ -1,17 +1,10 @@
 import time
 from datetime import datetime
 from rubix_http.resource import RubixResource
-from src.pyinstaller import resource_path
 from src.utils.project import get_version
 
 startTime = time.time()
 up_time_date = str(datetime.now())
-
-try:
-    with open(resource_path('VERSION')) as version_file:
-        version = version_file.read().strip()
-except FileNotFoundError:
-    version = 'Fake'
 
 
 def get_up_time():
