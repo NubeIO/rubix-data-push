@@ -1,4 +1,9 @@
 # CHANGELOG
+## [v1.0.4](https://github.com/NubeIO/rubix-service/tree/v1.0.4) (2021-05-26)
+### Added
+- Add a config to disable ssl verification
+- Push all data over and again
+
 ## [v1.0.3](https://github.com/NubeIO/rubix-service/tree/v1.0.3) (2021-05-26)
 ### Added
 - Make each rubix device send it's own payloads
