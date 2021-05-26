@@ -72,6 +72,7 @@ class PostgreSQL(metaclass=Singleton):
             logger.info(f"   client_id: {self.config.client_id}")
             logger.info(f"   client_url: {self.config.client_url}")
             logger.info(f"   token: ***")
+            self.sync()
             # schedule.every(5).seconds.do(self.sync)  # for testing
             schedule.every(self.config.timer).minutes.do(self.sync)
             while True:
@@ -161,10 +162,10 @@ class PostgreSQL(metaclass=Singleton):
         try:
             logger.info(f"Payload: {json_payload}")
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
-            if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-                logger.info(f"Updating postgres_sync_logs with global_uuid={global_uuid} & last_sync_id={last_sync_id}")
-                PostgersSyncLogModel(global_uuid=global_uuid,
-                                     last_sync_id=last_sync_id).update_last_sync_id()
+            # if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
+            #     logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
+            #     PostgersSyncLogModel(global_uuid=global_uuid,
+            #                          last_sync_id=last_sync_id).update_last_sync_id()
             logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
             logger.error(str(e))
