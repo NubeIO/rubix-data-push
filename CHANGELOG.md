@@ -1,4 +1,8 @@
 # CHANGELOG
+## [v1.0.3](https://github.com/NubeIO/rubix-service/tree/v1.0.3) (2021-05-26)
+### Added
+- Make each rubix device send it's own payloads
+
 ## [v1.0.2](https://github.com/NubeIO/rubix-service/tree/v1.0.2) (2021-05-25)
 ### Added
 - Add VERSION file
