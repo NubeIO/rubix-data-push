@@ -97,15 +97,29 @@ class PostgreSQL(metaclass=Singleton):
     def sync(self):
         """See the payload example in README"""
         wires_plats = self.get_wires_plat()
-        payload = {}
-        postgres_sync_logs = []
         for wires_plat in wires_plats:
             (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
              site_lon, time_zone, device_id, device_name) = wires_plat
+
             points_values = self.get_points_values(global_uuid)
-            if len(points_values) > 0:
-                last_sync_id = points_values[0]['id']
-                postgres_sync_logs.append({"global_uuid": global_uuid, "last_sync_id": last_sync_id})
+            if not points_values:
+                continue
+
+            payload = {
+                'site_id': site_id,
+                'site_name': site_name,
+                'site_address': site_address,
+                'site_city': site_city,
+                'site_state': site_state,
+                'site_zip': site_zip,
+                'site_country': site_country,
+                'site_lat': site_lat,
+                'site_lon': site_lon,
+                'time_zone': time_zone,
+                'device_id': device_id,
+                'device_name': device_name,
+                'rubix_networks': {}
+            }
             for row in points_values:
                 network_uuid: str = row["network_uuid"]
                 network_name: str = row["network_name"]
@@ -113,85 +127,45 @@ class PostgreSQL(metaclass=Singleton):
                 device_name: str = row["device_name"]
                 point_uuid: str = row["point_uuid"]
                 point_name: str = row["point_name"]
-                if not payload.get(site_id):
-                    payload[site_id] = {
-                        'site_name': site_name,
-                        'site_address': site_address,
-                        'site_city': site_city,
-                        'site_state': site_state,
-                        'site_zip': site_zip,
-                        'site_country': site_country,
-                        'site_lat': site_lat,
-                        'site_lon': site_lon,
-                        'time_zone': time_zone,
-                        'devices': {}
-                    }
-                if not payload[site_id]['devices'].get(device_id):
-                    payload[site_id]['devices'][device_id] = {
-                        'name': device_name,
-                        'rubix_networks': {}
-                    }
-                if not payload[site_id]['devices'][device_id]['rubix_networks'].get(network_uuid):
-                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid] = {
+                if not payload['rubix_networks'].get(network_uuid):
+                    payload['rubix_networks'][network_uuid] = {
                         'name': network_name,
+                        'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid),
                         'rubix_devices': {}
                     }
-                if not payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'].get(
-                        device_uuid):
-                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
-                        device_uuid] = {
+
+                if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
+                    payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
                         'name': device_name,
+                        'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid),
                         'rubix_points': {}
                     }
 
-                point_values = payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
-                    device_uuid]['rubix_points'].get(point_uuid)
+                rubix_device = payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid]
+                rubix_point = rubix_device['rubix_points'].get(point_uuid)
                 point_value = {
                     "ts": str(row["ts"]),
                     "value": None if row["value"] is None else float(row["value"])
                 }
-                if not point_values:
-                    payload[site_id]['devices'][device_id]['rubix_networks'][network_uuid]['rubix_devices'][
-                        device_uuid]['rubix_points'][point_uuid] = {
+                if not rubix_point:
+                    rubix_device['rubix_points'][point_uuid] = {
                         'name': point_name,
+                        'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid),
                         'values': []
                     }
                 else:
-                    point_values['values'].append(point_value)
-        try:
-            if payload:
-                for site_id in payload.keys():
-                    site: dict = payload[site_id]
-                    for device_id in site['devices'].keys():
-                        device: dict = site['devices'][device_id]
-                        for network_uuid in device['rubix_networks'].keys():
-                            rubix_network: dict = device['rubix_networks'][network_uuid]
-                            device['rubix_networks'][network_uuid] = {
-                                **rubix_network,
-                                'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid)
-                            }
-                            for device_uuid in rubix_network['rubix_devices'].keys():
-                                rubix_device: dict = rubix_network['rubix_devices'][device_uuid]
-                                rubix_network['rubix_devices'][device_uuid] = {
-                                    **rubix_device,
-                                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid)
-                                }
-                                for point_uuid in rubix_device['rubix_points'].keys():
-                                    rubix_point: dict = rubix_device['rubix_points'][point_uuid]
-                                    rubix_device['rubix_points'][point_uuid] = {
-                                        **rubix_point,
-                                        'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid)
-                                    }
+                    rubix_point['values'].append(point_value)
+            self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
 
-                json_payload = json.dumps(payload)
-                logger.info(f"Payload: {json_payload}")
-                resp = requests.post(self.__client_token_url, json=json_payload)
-                if 200 <= resp.status_code < 300:
-                    logger.info(f"Updating postgres_sync_logs: {postgres_sync_logs}")
-                    for log in postgres_sync_logs:
-                        PostgersSyncLogModel(global_uuid=log.get("global_uuid"),
-                                             last_sync_id=log.get("last_sync_id")).update_last_sync_id()
-                logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
+    def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
+        try:
+            logger.info(f"Payload: {json_payload}")
+            resp = requests.post(self.__client_token_url, json=json_payload)
+            if 200 <= resp.status_code < 300:
+                logger.info(f"Updating postgres_sync_logs with global_uuid={global_uuid} & last_sync_id={last_sync_id}")
+                PostgersSyncLogModel(global_uuid=global_uuid,
+                                     last_sync_id=last_sync_id).update_last_sync_id()
+            logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
             logger.error(str(e))
 
