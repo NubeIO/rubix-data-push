@@ -1,4 +1,8 @@
 # CHANGELOG
+## [v1.0.5](https://github.com/NubeIO/rubix-service/tree/v1.0.5) (2021-06-02)
+### Added
+- Config driven all data push or limit on new data only
+
 ## [v1.0.4](https://github.com/NubeIO/rubix-service/tree/v1.0.4) (2021-05-26)
 ### Added
 - Add a config to disable ssl verification
