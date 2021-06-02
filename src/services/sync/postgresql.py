@@ -162,10 +162,12 @@ class PostgreSQL(metaclass=Singleton):
         try:
             logger.info(f"Payload: {json_payload}")
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
+            # they are returning 200 status even on failure
             # if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-            #     logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
-            #     PostgersSyncLogModel(global_uuid=global_uuid,
-            #                          last_sync_id=last_sync_id).update_last_sync_id()
+            if 200 <= resp.status_code < 300:
+                logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
+                PostgersSyncLogModel(global_uuid=global_uuid,
+                                     last_sync_id=last_sync_id).update_last_sync_id()
             logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
             logger.error(str(e))
@@ -212,7 +214,7 @@ class PostgreSQL(metaclass=Singleton):
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
-                    last_sync_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+                    last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
                     curs.execute(query, (global_uuid, last_sync_id,))
                     return curs.fetchall()
                 except psycopg2.Error as e:
