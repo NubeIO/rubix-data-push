@@ -1,13 +1,14 @@
 import json
 import logging
 import time
-from typing import Union
+from typing import Union, List
 
 import psycopg2
 import psycopg2.extras
 import requests
 import schedule
 
+from src.handlers.exception import exception_handler
 from src.models.model_postgres_sync_log import PostgersSyncLogModel
 from src.setting import PostgresSetting
 from src.utils import Singleton
@@ -95,9 +96,10 @@ class PostgreSQL(metaclass=Singleton):
             self.__is_connected = False
             logger.error(f'Connection Error: {str(e)}')
 
+    @exception_handler
     def sync(self):
         """See the payload example in README"""
-        wires_plats = self.get_wires_plat()
+        wires_plats: List = self.get_wires_plat()
         for wires_plat in wires_plats:
             (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
              site_lon, time_zone, device_id, device_name) = wires_plat
@@ -186,18 +188,26 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error((str(e)))
 
-    def get_wires_plat(self):
-        query = f'SELECT global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, ' \
-                f'site_country, site_lat, site_lon, time_zone, device_id, device_name ' \
-                f'FROM {self.__wires_plat_table_name} ' \
-                f'WHERE client_id = %s'
-        with self.__client:
-            with self.__client.cursor() as curs:
-                try:
-                    curs.execute(query, (self.__config.client_id,))
-                    return curs.fetchall()
-                except psycopg2.Error as e:
-                    logger.error((str(e)))
+    def get_wires_plat(self) -> List:
+        """
+        This function will return wires_plat and if connection is already closed then we try to reconnect too
+        """
+        try:
+            query = f'SELECT global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, ' \
+                    f'site_country, site_lat, site_lon, time_zone, device_id, device_name ' \
+                    f'FROM {self.__wires_plat_table_name} ' \
+                    f'WHERE client_id = %s'
+            with self.__client:
+                with self.__client.cursor() as curs:
+                    try:
+                        curs.execute(query, (self.__config.client_id,))
+                        return curs.fetchall()
+                    except psycopg2.Error as e:
+                        logger.error((str(e)))
+        except Exception as e:
+            logger.error(f'Error: {e}')
+            self.connect()
+        return []
 
     def get_points_values(self, global_uuid):
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
