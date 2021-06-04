@@ -152,7 +152,7 @@ class PostgreSQL(metaclass=Singleton):
                     rubix_device['rubix_points'][point_uuid] = {
                         'name': point_name,
                         'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid),
-                        'values': []
+                        'values': [point_value]
                     }
                 else:
                     rubix_point['values'].append(point_value)
@@ -163,8 +163,7 @@ class PostgreSQL(metaclass=Singleton):
             logger.info(f"Payload: {json_payload}")
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
             # they are returning 200 status even on failure
-            # if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-            if 200 <= resp.status_code < 300:
+            if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
                 logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
                 PostgersSyncLogModel(global_uuid=global_uuid,
                                      last_sync_id=last_sync_id).update_last_sync_id()
