@@ -3,10 +3,10 @@ import logging
 import time
 from typing import Union, List
 
+import gevent
 import psycopg2
 import psycopg2.extras
 import requests
-import schedule
 
 from src.handlers.exception import exception_handler
 from src.models.model_postgres_sync_log import PostgersSyncLogModel
@@ -73,12 +73,9 @@ class PostgreSQL(metaclass=Singleton):
             logger.info(f"   client_id: {self.config.client_id}")
             logger.info(f"   client_url: {self.config.client_url}")
             logger.info(f"   token: ***")
-            self.sync()
-            # schedule.every(5).seconds.do(self.sync)  # for testing
-            schedule.every(self.config.timer).minutes.do(self.sync)
             while True:
-                schedule.run_pending()
-                time.sleep(1)
+                self.sync()
+                gevent.sleep(self.config.timer * 60)
 
     def connect(self):
         if self.__client:
@@ -100,15 +97,17 @@ class PostgreSQL(metaclass=Singleton):
     def sync(self):
         """See the payload example in README"""
         wires_plats: List = self.get_wires_plat()
+        gevent.sleep(1)
         for wires_plat in wires_plats:
             (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
              site_lon, time_zone, device_id, device_name) = wires_plat
 
             points_values = self.get_points_values(global_uuid)
+            gevent.sleep(1)
             if not points_values:
                 continue
 
-            payload = {
+            payload: dict = {
                 'site_id': site_id,
                 'site_name': site_name,
                 'site_address': site_address,
