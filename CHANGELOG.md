@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.0.7](https://github.com/NubeIO/rubix-service/tree/v1.0.7) (2021-06-23)
+- Don't timeout on data-push
+
 ## [v1.0.6](https://github.com/NubeIO/rubix-service/tree/v1.0.6) (2021-06-04)
 - Fix: empty point push
 - Reconnect on connection failure
