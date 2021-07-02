@@ -25,6 +25,7 @@ class PostgreSQL(metaclass=Singleton):
         self.__devices_table_name: str = ''
         self.__points_table_name: str = ''
         self.__points_values_table_name: str = ''
+        self.__points_values_backup_table_name: str = ''
         self.__devices_tags_table_name: str = ''
         self.__networks_tags_table_name: str = ''
         self.__points_tags_table_name: str = ''
@@ -48,6 +49,7 @@ class PostgreSQL(metaclass=Singleton):
         self.__devices_table_name: str = f'{self.config.table_prefix}_devices'
         self.__points_table_name: str = f'{self.config.table_prefix}_points'
         self.__points_values_table_name: str = f'{self.__points_table_name}_values'
+        self.__points_values_backup_table_name: str = f'{self.__points_table_name}_values_backup'
         self.__devices_tags_table_name: str = f'{self.__devices_table_name}_tags'
         self.__networks_tags_table_name: str = f'{self.__networks_table_name}_tags'
         self.__points_tags_table_name: str = f'{self.__points_table_name}_tags'
@@ -89,6 +91,8 @@ class PostgreSQL(metaclass=Singleton):
                                              sslmode=self.__config.ssl_mode,
                                              connect_timeout=self.__config.connect_timeout)
             self.__is_connected = True
+            if self.config.backup_and_clear:
+                self.create_table_if_not_exists()
         except Exception as e:
             self.__is_connected = False
             logger.error(f'Connection Error: {str(e)}')
@@ -157,6 +161,9 @@ class PostgreSQL(metaclass=Singleton):
                     }
                 else:
                     rubix_point['values'].append(point_value)
+            if self.config.backup_and_clear:
+                last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+                self.backup_and_clear_points_values(global_uuid, last_sync_id)
             self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
 
     def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
@@ -208,6 +215,32 @@ class PostgreSQL(metaclass=Singleton):
             self.connect()
         return []
 
+    def backup_and_clear_points_values(self, global_uuid: str, last_sync_id: int):
+        backup_query = f'INSERT INTO {self.__points_values_backup_table_name} ' \
+                       f'SELECT tpv.id as id, tpv.point_uuid as point_uuid, tpv.value as value, ' \
+                       f'tpv.value_original as value_original, tpv.value_raw as value_raw, tpv.fault as fault, ' \
+                       f'tpv.fault_message as fault_message, tpv.ts_value as ts_value, tpv.ts_fault as ts_fault ' \
+                       f'FROM {self.__points_values_table_name} tpv ' \
+                       f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                       f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                       f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id <= %s ' \
+                       f"ON CONFLICT (id, point_uuid) DO NOTHING;"
+
+        delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE id IN (' \
+                       f'SELECT id FROM {self.__points_values_table_name} tpv ' \
+                       f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                       f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                       f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id <= %s);'
+        with self.__client:
+            with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
+                try:
+                    curs.execute(backup_query, (global_uuid, last_sync_id,))
+                    curs.execute(delete_query, (global_uuid, last_sync_id,))
+                except psycopg2.Error as e:
+                    logger.error(str(e))
+
     def get_points_values(self, global_uuid):
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
                 f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
@@ -225,5 +258,26 @@ class PostgreSQL(metaclass=Singleton):
                     last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
                     curs.execute(query, (global_uuid, last_sync_id,))
                     return curs.fetchall()
+                except psycopg2.Error as e:
+                    logger.error(str(e))
+
+    def create_table_if_not_exists(self):
+        query_point_value_data = f'CREATE TABLE IF NOT EXISTS {self.__points_values_backup_table_name} ' \
+                                 f'(id INTEGER, ' \
+                                 f'point_uuid VARCHAR, ' \
+                                 f'value NUMERIC,' \
+                                 f'value_original NUMERIC, ' \
+                                 f'value_raw VARCHAR, ' \
+                                 f'fault BOOLEAN, ' \
+                                 f'fault_message VARCHAR,' \
+                                 f'ts_value  TIMESTAMP, ' \
+                                 f'ts_fault TIMESTAMP,' \
+                                 f'CONSTRAINT fk_{self.__points_table_name} FOREIGN KEY(point_uuid) ' \
+                                 f'REFERENCES {self.__points_table_name}(uuid) ON DELETE RESTRICT, ' \
+                                 f'PRIMARY KEY (id, point_uuid))'
+        with self.__client:
+            with self.__client.cursor() as curs:
+                try:
+                    curs.execute(query_point_value_data)
                 except psycopg2.Error as e:
                     logger.error(str(e))

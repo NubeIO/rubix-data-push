@@ -15,10 +15,8 @@ class PostgersSyncLogModel(ModelBase):
             self.save_to_db()
 
     @classmethod
-    def get_last_sync_id(cls, global_uuid: str):
+    def get_last_sync_id(cls, global_uuid: str) -> int:
         log = cls.query.filter_by(global_uuid=global_uuid).first()
         if log:
             return log.last_sync_id
         return 0
-
-
