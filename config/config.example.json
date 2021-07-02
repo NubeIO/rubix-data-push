@@ -11,6 +11,7 @@
     "table_prefix": "tbl",
     "discard_null": true,
     "all_rows": false,
+    "backup_and_clear": true,
     "attempt_reconnect_secs": 5,
     "client_id": "",
     "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",
