@@ -30,7 +30,9 @@ class PostgreSQL(metaclass=Singleton):
         self.__networks_tags_table_name: str = ''
         self.__points_tags_table_name: str = ''
         self.__client_token_url: str = ''
-        self.__is_connected = False
+        self.__is_connected: bool = False
+        self.__loop_count: int = 0
+        self.__device_count: int = 0
 
     @property
     def config(self) -> Union[PostgresSetting, None]:
@@ -78,6 +80,7 @@ class PostgreSQL(metaclass=Singleton):
             while True:
                 self.sync()
                 gevent.sleep(self.config.timer * 60)
+                self.__device_count = 0
 
     def connect(self):
         if self.__client:
@@ -102,68 +105,77 @@ class PostgreSQL(metaclass=Singleton):
         """See the payload example in README"""
         wires_plats: List = self.get_wires_plat()
         gevent.sleep(1)
+        self.__loop_count += 1
+        logger.info("Fresh loop started...")
         for wires_plat in wires_plats:
-            (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
-             site_lon, time_zone, device_id, device_name) = wires_plat
+            self.sync_device(wires_plat)
 
-            points_values = self.get_points_values(global_uuid)
-            gevent.sleep(1)
-            if not points_values:
-                continue
+    def sync_device(self, wires_plat):
+        self.__device_count += 1
+        (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
+         site_lon, time_zone, device_id, device_name) = wires_plat
+        logger.info(
+            f"Syncing Device global_uuid={global_uuid}, device_name={device_name}, loop_count={self.__loop_count}, "
+            f"device_count={self.__device_count}")
 
-            payload: dict = {
-                'site_id': site_id,
-                'site_name': site_name,
-                'site_address': site_address,
-                'site_city': site_city,
-                'site_state': site_state,
-                'site_zip': site_zip,
-                'site_country': site_country,
-                'site_lat': site_lat,
-                'site_lon': site_lon,
-                'time_zone': time_zone,
-                'device_id': device_id,
-                'device_name': device_name,
-                'rubix_networks': {}
-            }
-            for row in points_values:
-                network_uuid: str = row["network_uuid"]
-                network_name: str = row["network_name"]
-                device_uuid: str = row["device_uuid"]
-                device_name: str = row["device_name"]
-                point_uuid: str = row["point_uuid"]
-                point_name: str = row["point_name"]
-                if not payload['rubix_networks'].get(network_uuid):
-                    payload['rubix_networks'][network_uuid] = {
-                        'name': network_name,
-                        'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid),
-                        'rubix_devices': {}
-                    }
+        points_values = self.get_points_values(global_uuid)
+        gevent.sleep(1)
+        if not points_values:
+            return
 
-                if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
-                    payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
-                        'name': device_name,
-                        'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid),
-                        'rubix_points': {}
-                    }
-
-                rubix_device = payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid]
-                rubix_point = rubix_device['rubix_points'].get(point_uuid)
-                point_value = {
-                    "ts": str(row["ts"]),
-                    "value": None if row["value"] is None else float(row["value"])
+        payload: dict = {
+            'site_id': site_id,
+            'site_name': site_name,
+            'site_address': site_address,
+            'site_city': site_city,
+            'site_state': site_state,
+            'site_zip': site_zip,
+            'site_country': site_country,
+            'site_lat': site_lat,
+            'site_lon': site_lon,
+            'time_zone': time_zone,
+            'device_id': device_id,
+            'device_name': device_name,
+            'rubix_networks': {}
+        }
+        for row in points_values:
+            network_uuid: str = row["network_uuid"]
+            network_name: str = row["network_name"]
+            device_uuid: str = row["device_uuid"]
+            device_name: str = row["device_name"]
+            point_uuid: str = row["point_uuid"]
+            point_name: str = row["point_name"]
+            if not payload['rubix_networks'].get(network_uuid):
+                payload['rubix_networks'][network_uuid] = {
+                    'name': network_name,
+                    'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid),
+                    'rubix_devices': {}
                 }
-                if not rubix_point:
-                    rubix_device['rubix_points'][point_uuid] = {
-                        'name': point_name,
-                        'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid),
-                        'values': [point_value]
-                    }
-                else:
-                    rubix_point['values'].append(point_value)
-            last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
-            self.backup_and_clear_points_values(global_uuid, last_sync_id)
-            self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
+
+            if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
+                payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
+                    'name': device_name,
+                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid),
+                    'rubix_points': {}
+                }
+
+            rubix_device = payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid]
+            rubix_point = rubix_device['rubix_points'].get(point_uuid)
+            point_value = {
+                "ts": str(row["ts"]),
+                "value": None if row["value"] is None else float(row["value"])
+            }
+            if not rubix_point:
+                rubix_device['rubix_points'][point_uuid] = {
+                    'name': point_name,
+                    'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid),
+                    'values': [point_value]
+                }
+            else:
+                rubix_point['values'].append(point_value)
+        last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+        self.backup_and_clear_points_values(global_uuid, last_sync_id)
+        self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
 
     def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
         try:
@@ -223,7 +235,7 @@ class PostgreSQL(metaclass=Singleton):
                        f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                        f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                        f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id <= %s ' \
+                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id < %s ' \
                        f"ON CONFLICT (id, point_uuid) DO NOTHING;"
 
         delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE id IN (' \
@@ -231,7 +243,7 @@ class PostgreSQL(metaclass=Singleton):
                        f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                        f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                        f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id <= %s);'
+                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id < %s);'
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
