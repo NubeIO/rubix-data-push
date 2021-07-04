@@ -119,7 +119,6 @@ class PostgreSQL(metaclass=Singleton):
             f"device_count={self.__device_count}")
 
         points_values = self.get_points_values(global_uuid)
-        gevent.sleep(1)
         if not points_values:
             return
 
@@ -148,14 +147,16 @@ class PostgreSQL(metaclass=Singleton):
             if not payload['rubix_networks'].get(network_uuid):
                 payload['rubix_networks'][network_uuid] = {
                     'name': network_name,
-                    'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid', network_uuid),
+                    'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid',
+                                          network_uuid) if self.config.include_tags else {},
                     'rubix_devices': {}
                 }
 
             if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
                 payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
                     'name': device_name,
-                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid', device_uuid),
+                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid',
+                                          device_uuid) if self.config.include_tags else {},
                     'rubix_points': {}
                 }
 
@@ -168,7 +169,8 @@ class PostgreSQL(metaclass=Singleton):
             if not rubix_point:
                 rubix_device['rubix_points'][point_uuid] = {
                     'name': point_name,
-                    'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid', point_uuid),
+                    'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid',
+                                          point_uuid) if self.config.include_tags else {},
                     'values': [point_value]
                 }
             else:
