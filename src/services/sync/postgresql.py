@@ -91,7 +91,7 @@ class PostgreSQL(metaclass=Singleton):
                                              sslmode=self.__config.ssl_mode,
                                              connect_timeout=self.__config.connect_timeout)
             self.__is_connected = True
-            if self.config.backup_and_clear:
+            if self.config.backup:
                 self.create_table_if_not_exists()
         except Exception as e:
             self.__is_connected = False
@@ -161,9 +161,8 @@ class PostgreSQL(metaclass=Singleton):
                     }
                 else:
                     rubix_point['values'].append(point_value)
-            if self.config.backup_and_clear:
-                last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
-                self.backup_and_clear_points_values(global_uuid, last_sync_id)
+            last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+            self.backup_and_clear_points_values(global_uuid, last_sync_id)
             self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
 
     def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
@@ -236,8 +235,10 @@ class PostgreSQL(metaclass=Singleton):
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
-                    curs.execute(backup_query, (global_uuid, last_sync_id,))
-                    curs.execute(delete_query, (global_uuid, last_sync_id,))
+                    if self.config.backup:
+                        curs.execute(backup_query, (global_uuid, last_sync_id,))
+                    if self.config.clear:
+                        curs.execute(delete_query, (global_uuid, last_sync_id,))
                 except psycopg2.Error as e:
                     logger.error(str(e))
 

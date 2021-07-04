@@ -34,7 +34,8 @@ class PostgresSetting(BaseSetting):
         self.table_prefix = 'tbl'
         self.discard_null = True
         self.all_rows = False
-        self.backup_and_clear = True
+        self.backup = True
+        self.clear = True
         self.attempt_reconnect_secs = 5
         self.client_id = ''
         self.client_url = ''
