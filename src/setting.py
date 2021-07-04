@@ -30,10 +30,13 @@ class PostgresSetting(BaseSetting):
         self.password = 'root'
         self.ssl_mode = 'allow'
         self.connect_timeout = 5
-        self.timer = 5
+        self.timer = 0
         self.table_prefix = 'tbl'
         self.discard_null = True
         self.all_rows = False
+        self.backup = True
+        self.clear = True
+        self.include_tags = False
         self.attempt_reconnect_secs = 5
         self.client_id = ''
         self.client_url = ''

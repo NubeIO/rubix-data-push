@@ -1,4 +1,8 @@
 # CHANGELOG
+## [v1.0.8](https://github.com/NubeIO/rubix-service/tree/v1.0.8) (2021-07-04)
+- Backup and clear postgresql data
+- Include tags false by default
+
 ## [v1.0.7](https://github.com/NubeIO/rubix-service/tree/v1.0.7) (2021-06-23)
 - Don't timeout on data-push
 
