@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from datetime import timedelta, timezone, datetime
 from typing import Union, List
 
 import gevent
@@ -14,6 +15,9 @@ from src.setting import PostgresSetting
 from src.utils import Singleton
 
 logger = logging.getLogger(__name__)
+
+MAX_SUCCESS_LOOP_COUNT: int = 20
+RESERVE_TIME_HR: int = 12
 
 
 class PostgreSQL(metaclass=Singleton):
@@ -33,6 +37,7 @@ class PostgreSQL(metaclass=Singleton):
         self.__is_connected: bool = False
         self.__loop_count: int = 0
         self.__device_count: int = 0
+        self.__success_loop_count: int = 0
 
     @property
     def config(self) -> Union[PostgresSetting, None]:
@@ -106,7 +111,11 @@ class PostgreSQL(metaclass=Singleton):
         wires_plats: List = self.get_wires_plat()
         gevent.sleep(1)
         self.__loop_count += 1
+        self.__success_loop_count += 1
         logger.info("Fresh loop started...")
+        if self.__success_loop_count > MAX_SUCCESS_LOOP_COUNT:
+            self.__success_loop_count = 0
+            self.backup_and_clear_points_values()
         for wires_plat in wires_plats:
             self.sync_device(wires_plat)
 
@@ -175,8 +184,6 @@ class PostgreSQL(metaclass=Singleton):
                 }
             else:
                 rubix_point['values'].append(point_value)
-        last_sync_id: int = PostgersSyncLogModel.get_last_sync_id(global_uuid)
-        self.backup_and_clear_points_values(global_uuid, last_sync_id)
         self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
 
     def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
@@ -188,8 +195,13 @@ class PostgreSQL(metaclass=Singleton):
                 logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
                 PostgersSyncLogModel(global_uuid=global_uuid,
                                      last_sync_id=last_sync_id).update_last_sync_id()
+            else:
+                logger.error("Failure on sending...")
+                self.__success_loop_count = 0
             logger.info(f"Response: ${resp.content}, with status_code: {resp.status_code}")
         except Exception as e:
+            logger.error("Failure on sending...")
+            self.__success_loop_count = 0
             logger.error(str(e))
 
     def get_tags(self, table_name: str, column_name: str, uuid: str):
@@ -228,31 +240,29 @@ class PostgreSQL(metaclass=Singleton):
             self.connect()
         return []
 
-    def backup_and_clear_points_values(self, global_uuid: str, last_sync_id: int):
+    def backup_and_clear_points_values(self):
         backup_query = f'INSERT INTO {self.__points_values_backup_table_name} ' \
                        f'SELECT tpv.id as id, tpv.point_uuid as point_uuid, tpv.value as value, ' \
                        f'tpv.value_original as value_original, tpv.value_raw as value_raw, tpv.fault as fault, ' \
                        f'tpv.fault_message as fault_message, tpv.ts_value as ts_value, tpv.ts_fault as ts_fault ' \
                        f'FROM {self.__points_values_table_name} tpv ' \
-                       f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
-                       f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
-                       f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id < %s ' \
+                       f'WHERE tpv.ts_value <= %s ' \
                        f"ON CONFLICT (id, point_uuid) DO NOTHING;"
 
-        delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE id IN (' \
-                       f'SELECT id FROM {self.__points_values_table_name} tpv ' \
-                       f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
-                       f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
-                       f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                       f'WHERE tn.wires_plat_global_uuid = %s and tpv.id < %s);'
+        delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE ts_value <= %s;'
+        last_defined_hours_date_time = datetime.now(timezone.utc) - timedelta(hours=RESERVE_TIME_HR)
+        last_defined_hours_date_time = last_defined_hours_date_time.strftime('%Y-%m-%d %H:%M:%S')
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
                     if self.config.backup:
-                        curs.execute(backup_query, (global_uuid, last_sync_id,))
+                        logger.info(
+                            f'Backing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                        curs.execute(backup_query, (last_defined_hours_date_time,))
                     if self.config.clear:
-                        curs.execute(delete_query, (global_uuid, last_sync_id,))
+                        logger.info(
+                            f'Clearing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                        curs.execute(delete_query, (last_defined_hours_date_time,))
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
