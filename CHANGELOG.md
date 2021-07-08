@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.0.9](https://github.com/NubeIO/rubix-service/tree/v1.0.9) (2021-07-08)
+- Change postgres backup & clear logic
+
 ## [v1.0.8](https://github.com/NubeIO/rubix-service/tree/v1.0.8) (2021-07-04)
 - Backup and clear postgresql data
 - Include tags false by default
