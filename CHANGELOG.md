@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.1.0](https://github.com/NubeIO/rubix-service/tree/v1.1.0) (2021-07-13)
+- Skip data-push sync if points values sync are in process
+
 ## [v1.0.9](https://github.com/NubeIO/rubix-service/tree/v1.0.9) (2021-07-08)
 - Change postgres backup & clear logic
 

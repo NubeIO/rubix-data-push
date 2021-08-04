@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from datetime import timedelta, timezone, datetime
-from typing import Union, List
+from typing import Union, List, Dict
 
 import gevent
 import psycopg2
@@ -17,6 +17,7 @@ from src.utils import Singleton
 logger = logging.getLogger(__name__)
 
 MAX_SUCCESS_LOOP_COUNT: int = 20
+MAX_ERROR_DEVICE_LOOP_COUNT: int = 100
 RESERVE_TIME_HR: int = 12
 
 
@@ -38,6 +39,7 @@ class PostgreSQL(metaclass=Singleton):
         self.__loop_count: int = 0
         self.__device_count: int = 0
         self.__success_loop_count: int = 0
+        self.__device_loop_counts: Dict[str, int] = {}
 
     @property
     def config(self) -> Union[PostgresSetting, None]:
@@ -131,6 +133,26 @@ class PostgreSQL(metaclass=Singleton):
         if not points_values:
             return
 
+        last_id = points_values[0]['id']
+        first_id = points_values[len(points_values) - 1]['id']
+        last_synced_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+        if last_id - first_id + 1 != len(points_values) or first_id - 1 != last_synced_id:
+            if not self.__device_loop_counts.get(global_uuid):
+                self.__device_loop_counts[global_uuid] = 0
+
+            if self.__device_loop_counts.get(global_uuid) <= MAX_ERROR_DEVICE_LOOP_COUNT - 1:
+                self.__device_loop_counts[global_uuid] += 1
+                logger.warning(f"Skipping... global_uuid={global_uuid}, coz all values might not yet synced yet, "
+                               f"loop_count={self.__device_loop_counts[global_uuid]}, size={len(points_values)}, "
+                               f"first_id={first_id}, last_id={last_id}, last_synced_id={last_synced_id}...")
+                return
+            else:
+                self.__device_loop_counts[global_uuid] = 0
+                logger.warning(
+                    f"Device global_uuid={global_uuid}, already looped upto {MAX_ERROR_DEVICE_LOOP_COUNT}...")
+                logger.warning(f"Device global_uuid={global_uuid}, now syncing what we have...")
+
+        self.__device_loop_counts[global_uuid] = 0
         payload: dict = {
             'site_id': site_id,
             'site_name': site_name,
@@ -147,6 +169,8 @@ class PostgreSQL(metaclass=Singleton):
             'rubix_networks': {}
         }
         for row in points_values:
+            if self.config.discard_null and row["value"] is None:
+                continue
             network_uuid: str = row["network_uuid"]
             network_name: str = row["network_name"]
             device_uuid: str = row["device_uuid"]
@@ -274,7 +298,6 @@ class PostgreSQL(metaclass=Singleton):
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
                 f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
-                f'{"and tpv.value is not null " if self.config.discard_null else ""}' \
                 f'ORDER BY tpv.id DESC;'
 
         with self.__client:

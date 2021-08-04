@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rubix-data-push"
-version = "1.0.9"
+version = "1.1.0"
 description = ""
 authors = ["NubeDev <aidan@enviroservices.com.au>"]
 
