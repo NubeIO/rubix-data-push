@@ -42,6 +42,7 @@ class PostgresSetting(BaseSetting):
         self.client_url = ''
         self.token = ''
         self.verify_ssl = False
+        self.count = 50
 
 
 class AppSetting:

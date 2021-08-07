@@ -18,6 +18,7 @@
     "client_id": "",
     "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",
     "token": "token",
-    "verify_ssl": false
+    "verify_ssl": false,
+    "count": 50
   }
 }
