@@ -124,8 +124,8 @@ class PostgreSQL(metaclass=Singleton):
             self.sync_device(wires_plats)
 
     def sync_device(self, wires_plats):
-        payloads = []
-        updates = {}
+        payloads: List = []
+        updates: dict = {}
         for wires_plat in wires_plats:
             self.__device_count += 1
             (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
@@ -216,11 +216,14 @@ class PostgreSQL(metaclass=Singleton):
 
             updates = {**updates, global_uuid: points_values[0]['id']}
             payloads.append(payload)
-        self.send_payload(updates, json.dumps(payloads))
+        self.send_payload(updates, payloads)
 
-    def send_payload(self, updates: dict, json_payload: json):
+    def send_payload(self, updates: dict, payload: list):
         try:
+            json_payload: json = json.dumps(payload)
             logger.info(f"Payload: {json_payload}")
+            if not payload:
+                return
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
             # they are returning 200 status even on failure
             if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
