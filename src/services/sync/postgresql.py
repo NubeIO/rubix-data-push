@@ -126,6 +126,9 @@ class PostgreSQL(metaclass=Singleton):
     def sync_device(self, wires_plats):
         payloads: List = []
         updates: dict = {}
+        bulk_points_values = self.get_bulk_points_values(wires_plats)
+        if not bulk_points_values:
+            return
         for wires_plat in wires_plats:
             self.__device_count += 1
             (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
@@ -134,7 +137,7 @@ class PostgreSQL(metaclass=Singleton):
                 f"Syncing Device global_uuid={global_uuid}, device_name={device_name}, loop_count={self.__loop_count}, "
                 f"device_count={self.__device_count}")
 
-            points_values = self.get_points_values(global_uuid)
+            points_values = [pv for pv in bulk_points_values if pv['global_uuid'] == global_uuid]
             if not points_values:
                 continue
 
@@ -303,21 +306,26 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
-    def get_points_values(self, global_uuid):
+    def get_bulk_points_values(self, wires_plats):
+        if not wires_plats:
+            return []
+        condition: str = ''
+        for wp in wires_plats:
+            global_uuid = wp[0]
+            last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
+            condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id}) OR "
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
-                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
-                f'FROM {self.__points_values_table_name} tpv ' \
+                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name, ' \
+                f'tn.wires_plat_global_uuid as global_uuid FROM {self.__points_values_table_name} tpv ' \
                 f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
-                f'ORDER BY tpv.id DESC;'
-
+                f'WHERE {condition[:-4]} ' \
+                f'ORDER BY tn.wires_plat_global_uuid,tpv.id DESC;'
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
-                    last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
-                    curs.execute(query, (global_uuid, last_sync_id,))
+                    curs.execute(query)
                     return curs.fetchall()
                 except psycopg2.Error as e:
                     logger.error(str(e))
