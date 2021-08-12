@@ -16,9 +16,9 @@ from src.utils import Singleton
 
 logger = logging.getLogger(__name__)
 
-MAX_SUCCESS_LOOP_COUNT: int = 20
-MAX_ERROR_DEVICE_LOOP_COUNT: int = 100
-RESERVE_TIME_HR: int = 12
+MAX_SUCCESS_LOOP_COUNT: int = 5
+MAX_ERROR_DEVICE_LOOP_COUNT: int = 10
+RESERVE_TIME_HR: int = 6
 
 
 class PostgreSQL(metaclass=Singleton):
