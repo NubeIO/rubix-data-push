@@ -16,10 +16,6 @@ from src.utils import Singleton
 
 logger = logging.getLogger(__name__)
 
-MAX_SUCCESS_LOOP_COUNT: int = 5
-MAX_ERROR_DEVICE_LOOP_COUNT: int = 10
-RESERVE_TIME_HR: int = 6
-
 
 class PostgreSQL(metaclass=Singleton):
     def __init__(self):
@@ -115,7 +111,7 @@ class PostgreSQL(metaclass=Singleton):
         self.__loop_count += 1
         self.__success_loop_count += 1
         logger.info("Fresh loop started...")
-        if self.__success_loop_count > MAX_SUCCESS_LOOP_COUNT:
+        if self.__success_loop_count > self.config.max_success_loop_count:
             self.__success_loop_count = 0
             self.backup_and_clear_points_values()
         wires_plats_list = [wires_plats_list[i:i + self.config.count] for i in
@@ -148,7 +144,7 @@ class PostgreSQL(metaclass=Singleton):
                 if not self.__device_loop_counts.get(global_uuid):
                     self.__device_loop_counts[global_uuid] = 0
 
-                if self.__device_loop_counts.get(global_uuid) <= MAX_ERROR_DEVICE_LOOP_COUNT - 1:
+                if self.__device_loop_counts.get(global_uuid) <= self.config.max_error_device_loop_count - 1:
                     self.__device_loop_counts[global_uuid] += 1
                     logger.warning(f"Skipping... global_uuid={global_uuid}, coz all values might not yet synced yet, "
                                    f"loop_count={self.__device_loop_counts[global_uuid]}, size={len(points_values)}, "
@@ -157,7 +153,8 @@ class PostgreSQL(metaclass=Singleton):
                 else:
                     self.__device_loop_counts[global_uuid] = 0
                     logger.warning(
-                        f"Device global_uuid={global_uuid}, already looped upto {MAX_ERROR_DEVICE_LOOP_COUNT}...")
+                        f"Device global_uuid={global_uuid}, already looped upto "
+                        f"{self.config.max_error_device_loop_count}...")
                     logger.warning(f"Device global_uuid={global_uuid}, now syncing what we have...")
 
             self.__device_loop_counts[global_uuid] = 0
@@ -290,18 +287,20 @@ class PostgreSQL(metaclass=Singleton):
                        f"ON CONFLICT (id, point_uuid) DO NOTHING;"
 
         delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE ts_value <= %s;'
-        last_defined_hours_date_time = datetime.now(timezone.utc) - timedelta(hours=RESERVE_TIME_HR)
+        last_defined_hours_date_time = datetime.now(timezone.utc) - timedelta(hours=self.config.reserve_time_hr)
         last_defined_hours_date_time = last_defined_hours_date_time.strftime('%Y-%m-%d %H:%M:%S')
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
                     if self.config.backup:
                         logger.info(
-                            f'Backing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                            f'Backing data upto: {last_defined_hours_date_time}, reserve_time_hr='
+                            f'{self.config.reserve_time_hr}')
                         curs.execute(backup_query, (last_defined_hours_date_time,))
                     if self.config.clear:
                         logger.info(
-                            f'Clearing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                            f'Clearing data upto: {last_defined_hours_date_time}, reserve_time_hr='
+                            f'{self.config.reserve_time_hr}')
                         curs.execute(delete_query, (last_defined_hours_date_time,))
                 except psycopg2.Error as e:
                     logger.error(str(e))

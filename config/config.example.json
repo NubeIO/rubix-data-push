@@ -7,7 +7,7 @@
     "password": "password",
     "ssl_mode": "allow",
     "connect_timeout": 5,
-    "timer": 0,
+    "timer": 5,
     "table_prefix": "tbl",
     "discard_null": true,
     "all_rows": false,
@@ -19,6 +19,9 @@
     "client_url": "https://smau2h2.envizi.com/EnviziNubeIOService/UploadData",
     "token": "token",
     "verify_ssl": false,
-    "count": 50
+    "count": 50,
+    "max_success_loop_count": 5,
+    "max_error_device_loop_count": 20,
+    "reserve_time_hr": 12
   }
 }
