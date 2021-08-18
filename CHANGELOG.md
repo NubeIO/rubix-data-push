@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.2.0](https://github.com/NubeIO/rubix-service/tree/v1.2.0) (2021-08-18)
+- Push all devices output on a bulk
+
 ## [v1.1.1](https://github.com/NubeIO/rubix-service/tree/v1.1.1) (2021-08-11)
 - Decrease reserve time
 
