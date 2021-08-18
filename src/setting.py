@@ -30,7 +30,7 @@ class PostgresSetting(BaseSetting):
         self.password = 'root'
         self.ssl_mode = 'allow'
         self.connect_timeout = 5
-        self.timer = 0
+        self.timer = 5
         self.table_prefix = 'tbl'
         self.discard_null = True
         self.all_rows = False
@@ -42,6 +42,10 @@ class PostgresSetting(BaseSetting):
         self.client_url = ''
         self.token = ''
         self.verify_ssl = False
+        self.count = 50
+        self.max_success_loop_count = 5
+        self.max_error_device_loop_count = 20
+        self.reserve_time_hr = 12
 
 
 class AppSetting:

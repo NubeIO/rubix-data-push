@@ -16,10 +16,6 @@ from src.utils import Singleton
 
 logger = logging.getLogger(__name__)
 
-MAX_SUCCESS_LOOP_COUNT: int = 5
-MAX_ERROR_DEVICE_LOOP_COUNT: int = 10
-RESERVE_TIME_HR: int = 6
-
 
 class PostgreSQL(metaclass=Singleton):
     def __init__(self):
@@ -110,115 +106,132 @@ class PostgreSQL(metaclass=Singleton):
     @exception_handler
     def sync(self):
         """See the payload example in README"""
-        wires_plats: List = self.get_wires_plat()
+        wires_plats_list: List = self.get_wires_plat()
         gevent.sleep(1)
         self.__loop_count += 1
         self.__success_loop_count += 1
         logger.info("Fresh loop started...")
-        if self.__success_loop_count > MAX_SUCCESS_LOOP_COUNT:
+        if self.__success_loop_count > self.config.max_success_loop_count:
             self.__success_loop_count = 0
             self.backup_and_clear_points_values()
-        for wires_plat in wires_plats:
-            self.sync_device(wires_plat)
+        wires_plats_list = [wires_plats_list[i:i + self.config.count] for i in
+                            range(0, len(wires_plats_list), self.config.count)]
+        for wires_plats in wires_plats_list:
+            self.sync_device(wires_plats)
 
-    def sync_device(self, wires_plat):
-        self.__device_count += 1
-        (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
-         site_lon, time_zone, device_id, device_name) = wires_plat
-        logger.info(
-            f"Syncing Device global_uuid={global_uuid}, device_name={device_name}, loop_count={self.__loop_count}, "
-            f"device_count={self.__device_count}")
-
-        points_values = self.get_points_values(global_uuid)
-        if not points_values:
+    def sync_device(self, wires_plats):
+        payloads: List = []
+        updates: dict = {}
+        bulk_points_values = self.get_bulk_points_values(wires_plats)
+        if not bulk_points_values:
             return
+        for wires_plat in wires_plats:
+            self.__device_count += 1
+            (global_uuid, site_id, site_name, site_address, site_city, site_state, site_zip, site_country, site_lat,
+             site_lon, time_zone, device_id, device_name) = wires_plat
+            logger.info(
+                f"Syncing Device global_uuid={global_uuid}, device_name={device_name}, loop_count={self.__loop_count}, "
+                f"device_count={self.__device_count}")
 
-        last_id = points_values[0]['id']
-        first_id = points_values[len(points_values) - 1]['id']
-        last_synced_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
-        if last_id - first_id + 1 != len(points_values) or first_id - 1 != last_synced_id:
-            if not self.__device_loop_counts.get(global_uuid):
-                self.__device_loop_counts[global_uuid] = 0
-
-            if self.__device_loop_counts.get(global_uuid) <= MAX_ERROR_DEVICE_LOOP_COUNT - 1:
-                self.__device_loop_counts[global_uuid] += 1
-                logger.warning(f"Skipping... global_uuid={global_uuid}, coz all values might not yet synced yet, "
-                               f"loop_count={self.__device_loop_counts[global_uuid]}, size={len(points_values)}, "
-                               f"first_id={first_id}, last_id={last_id}, last_synced_id={last_synced_id}...")
-                return
-            else:
-                self.__device_loop_counts[global_uuid] = 0
-                logger.warning(
-                    f"Device global_uuid={global_uuid}, already looped upto {MAX_ERROR_DEVICE_LOOP_COUNT}...")
-                logger.warning(f"Device global_uuid={global_uuid}, now syncing what we have...")
-
-        self.__device_loop_counts[global_uuid] = 0
-        payload: dict = {
-            'site_id': site_id,
-            'site_name': site_name,
-            'site_address': site_address,
-            'site_city': site_city,
-            'site_state': site_state,
-            'site_zip': site_zip,
-            'site_country': site_country,
-            'site_lat': site_lat,
-            'site_lon': site_lon,
-            'time_zone': time_zone,
-            'device_id': device_id,
-            'device_name': device_name,
-            'rubix_networks': {}
-        }
-        for row in points_values:
-            if self.config.discard_null and row["value"] is None:
+            points_values = [pv for pv in bulk_points_values if pv['global_uuid'] == global_uuid]
+            if not points_values:
                 continue
-            network_uuid: str = row["network_uuid"]
-            network_name: str = row["network_name"]
-            device_uuid: str = row["device_uuid"]
-            device_name: str = row["device_name"]
-            point_uuid: str = row["point_uuid"]
-            point_name: str = row["point_name"]
-            if not payload['rubix_networks'].get(network_uuid):
-                payload['rubix_networks'][network_uuid] = {
-                    'name': network_name,
-                    'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid',
-                                          network_uuid) if self.config.include_tags else {},
-                    'rubix_devices': {}
-                }
 
-            if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
-                payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
-                    'name': device_name,
-                    'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid',
-                                          device_uuid) if self.config.include_tags else {},
-                    'rubix_points': {}
-                }
+            last_id = points_values[0]['id']
+            first_id = points_values[len(points_values) - 1]['id']
+            last_synced_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+            if last_id - first_id + 1 != len(points_values) or first_id - 1 != last_synced_id:
+                if not self.__device_loop_counts.get(global_uuid):
+                    self.__device_loop_counts[global_uuid] = 0
 
-            rubix_device = payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid]
-            rubix_point = rubix_device['rubix_points'].get(point_uuid)
-            point_value = {
-                "ts": str(row["ts"]),
-                "value": None if row["value"] is None else float(row["value"])
+                if self.__device_loop_counts.get(global_uuid) <= self.config.max_error_device_loop_count - 1:
+                    self.__device_loop_counts[global_uuid] += 1
+                    logger.warning(f"Skipping... global_uuid={global_uuid}, coz all values might not yet synced yet, "
+                                   f"loop_count={self.__device_loop_counts[global_uuid]}, size={len(points_values)}, "
+                                   f"first_id={first_id}, last_id={last_id}, last_synced_id={last_synced_id}...")
+                    continue
+                else:
+                    self.__device_loop_counts[global_uuid] = 0
+                    logger.warning(
+                        f"Device global_uuid={global_uuid}, already looped upto "
+                        f"{self.config.max_error_device_loop_count}...")
+                    logger.warning(f"Device global_uuid={global_uuid}, now syncing what we have...")
+
+            self.__device_loop_counts[global_uuid] = 0
+            payload: dict = {
+                'site_id': site_id,
+                'site_name': site_name,
+                'site_address': site_address,
+                'site_city': site_city,
+                'site_state': site_state,
+                'site_zip': site_zip,
+                'site_country': site_country,
+                'site_lat': site_lat,
+                'site_lon': site_lon,
+                'time_zone': time_zone,
+                'device_id': device_id,
+                'device_name': device_name,
+                'rubix_networks': {}
             }
-            if not rubix_point:
-                rubix_device['rubix_points'][point_uuid] = {
-                    'name': point_name,
-                    'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid',
-                                          point_uuid) if self.config.include_tags else {},
-                    'values': [point_value]
-                }
-            else:
-                rubix_point['values'].append(point_value)
-        self.send_payload(global_uuid, points_values[0]['id'], json.dumps(payload))
+            for row in points_values:
+                if self.config.discard_null and row["value"] is None:
+                    continue
+                network_uuid: str = row["network_uuid"]
+                network_name: str = row["network_name"]
+                device_uuid: str = row["device_uuid"]
+                device_name: str = row["device_name"]
+                point_uuid: str = row["point_uuid"]
+                point_name: str = row["point_name"]
+                if not payload['rubix_networks'].get(network_uuid):
+                    payload['rubix_networks'][network_uuid] = {
+                        'name': network_name,
+                        'tags': self.get_tags(self.__networks_tags_table_name, 'network_uuid',
+                                              network_uuid) if self.config.include_tags else {},
+                        'rubix_devices': {}
+                    }
 
-    def send_payload(self, global_uuid: str, last_sync_id: int, json_payload: json):
+                if not payload['rubix_networks'][network_uuid]['rubix_devices'].get(device_uuid):
+                    payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid] = {
+                        'name': device_name,
+                        'tags': self.get_tags(self.__devices_tags_table_name, 'device_uuid',
+                                              device_uuid) if self.config.include_tags else {},
+                        'rubix_points': {}
+                    }
+
+                rubix_device = payload['rubix_networks'][network_uuid]['rubix_devices'][device_uuid]
+                rubix_point = rubix_device['rubix_points'].get(point_uuid)
+                point_value = {
+                    "ts": str(row["ts"]),
+                    "value": None if row["value"] is None else float(row["value"])
+                }
+                if not rubix_point:
+                    rubix_device['rubix_points'][point_uuid] = {
+                        'name': point_name,
+                        'tags': self.get_tags(self.__points_tags_table_name, 'point_uuid',
+                                              point_uuid) if self.config.include_tags else {},
+                        'values': [point_value]
+                    }
+                else:
+                    rubix_point['values'].append(point_value)
+
+            updates = {**updates, global_uuid: points_values[0]['id']}
+            payloads.append(payload)
+        self.send_payload(updates, payloads)
+
+    def send_payload(self, updates: dict, payload: list):
         try:
+            json_payload: json = json.dumps(payload)
             logger.info(f"Payload: {json_payload}")
+            if not payload:
+                return
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
             # they are returning 200 status even on failure
             if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-                logger.info(f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
-                PostgersSyncLogModel(global_uuid=global_uuid,
-                                     last_sync_id=last_sync_id).update_last_sync_id()
+                for global_uuid, last_sync_id in updates.items():
+                    logger.info(
+                        f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
+                    PostgersSyncLogModel(global_uuid=global_uuid,
+                                         last_sync_id=last_sync_id).update_last_sync_id()
             else:
                 logger.error("Failure on sending...")
                 self.__success_loop_count = 0
@@ -274,37 +287,44 @@ class PostgreSQL(metaclass=Singleton):
                        f"ON CONFLICT (id, point_uuid) DO NOTHING;"
 
         delete_query = f'DELETE FROM {self.__points_values_table_name} WHERE ts_value <= %s;'
-        last_defined_hours_date_time = datetime.now(timezone.utc) - timedelta(hours=RESERVE_TIME_HR)
+        last_defined_hours_date_time = datetime.now(timezone.utc) - timedelta(hours=self.config.reserve_time_hr)
         last_defined_hours_date_time = last_defined_hours_date_time.strftime('%Y-%m-%d %H:%M:%S')
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
                     if self.config.backup:
                         logger.info(
-                            f'Backing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                            f'Backing data upto: {last_defined_hours_date_time}, reserve_time_hr='
+                            f'{self.config.reserve_time_hr}')
                         curs.execute(backup_query, (last_defined_hours_date_time,))
                     if self.config.clear:
                         logger.info(
-                            f'Clearing data upto: {last_defined_hours_date_time}, reserve_time_hr={RESERVE_TIME_HR}')
+                            f'Clearing data upto: {last_defined_hours_date_time}, reserve_time_hr='
+                            f'{self.config.reserve_time_hr}')
                         curs.execute(delete_query, (last_defined_hours_date_time,))
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
-    def get_points_values(self, global_uuid):
+    def get_bulk_points_values(self, wires_plats):
+        if not wires_plats:
+            return []
+        condition: str = ''
+        for wp in wires_plats:
+            global_uuid = wp[0]
+            last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
+            condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id}) OR "
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
-                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name ' \
-                f'FROM {self.__points_values_table_name} tpv ' \
+                f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name, ' \
+                f'tn.wires_plat_global_uuid as global_uuid FROM {self.__points_values_table_name} tpv ' \
                 f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
                 f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
                 f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                f'WHERE tn.wires_plat_global_uuid = %s and tpv.id > %s ' \
-                f'ORDER BY tpv.id DESC;'
-
+                f'WHERE {condition[:-4]} ' \
+                f'ORDER BY tn.wires_plat_global_uuid,tpv.id DESC;'
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
-                    last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
-                    curs.execute(query, (global_uuid, last_sync_id,))
+                    curs.execute(query)
                     return curs.fetchall()
                 except psycopg2.Error as e:
                     logger.error(str(e))
