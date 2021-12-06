@@ -6,11 +6,19 @@ class PostgersSyncLogModel(ModelBase):
     __tablename__ = 'postgres_sync_logs'
     global_uuid = db.Column(db.String(80), primary_key=True, nullable=False)
     last_sync_id = db.Column(db.Integer(), nullable=False, default=0)
+    last_sync_ts_value = db.Column(db.DateTime())
 
     def update_last_sync_id(self):
         log = self.query.filter_by(global_uuid=self.global_uuid).first()
         if log:
             log.update(**{'last_sync_id': self.last_sync_id})
+        else:
+            self.save_to_db()
+
+    def update_last_sync(self):
+        log = self.query.filter_by(global_uuid=self.global_uuid).first()
+        if log:
+            log.update(**{'last_sync_id': self.last_sync_id, 'last_sync_ts_value': self.last_sync_ts_value})
         else:
             self.save_to_db()
 
@@ -20,3 +28,10 @@ class PostgersSyncLogModel(ModelBase):
         if log:
             return log.last_sync_id
         return 0
+
+    @classmethod
+    def get_last_sync_ts_value(cls, global_uuid: str):
+        log = cls.query.filter_by(global_uuid=global_uuid).first()
+        if log:
+            return log.last_sync_ts_value
+        return None
