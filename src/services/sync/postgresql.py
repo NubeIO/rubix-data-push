@@ -124,6 +124,8 @@ class PostgreSQL(metaclass=Singleton):
         updates: dict = {}
         bulk_points_values = self.get_bulk_points_values(wires_plats)
         if not bulk_points_values:
+            for wires_plat in wires_plats:
+                self.check_and_reset_postgres_sync_log(wires_plat)
             return
         for wires_plat in wires_plats:
             self.__device_count += 1
@@ -135,6 +137,7 @@ class PostgreSQL(metaclass=Singleton):
 
             points_values = [pv for pv in bulk_points_values if pv['global_uuid'] == global_uuid]
             if not points_values:
+                self.check_and_reset_postgres_sync_log(wires_plat)
                 continue
 
             last_id = points_values[0]['id']
@@ -214,7 +217,9 @@ class PostgreSQL(metaclass=Singleton):
                 else:
                     rubix_point['values'].append(point_value)
 
-            updates = {**updates, global_uuid: points_values[0]['id']}
+            updates = {**updates,
+                       global_uuid: {'last_sync_id': points_values[0]['id'],
+                                     'last_sync_ts_value': points_values[0]['ts']}}
             payloads.append(payload)
         self.send_payload(updates, payloads)
 
@@ -227,11 +232,15 @@ class PostgreSQL(metaclass=Singleton):
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
             # they are returning 200 status even on failure
             if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-                for global_uuid, last_sync_id in updates.items():
+                for global_uuid, item in updates.items():
+                    last_sync_id = item['last_sync_id']
+                    last_sync_ts_value = item['last_sync_ts_value']
                     logger.info(
-                        f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
+                        f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id}, "
+                        f"last_sync_ts_value={last_sync_ts_value})")
                     PostgersSyncLogModel(global_uuid=global_uuid,
-                                         last_sync_id=last_sync_id).update_last_sync_id()
+                                         last_sync_id=last_sync_id,
+                                         last_sync_ts_value=last_sync_ts_value).update_last_sync()
             else:
                 logger.error("Failure on sending...")
                 self.__success_loop_count = 0
@@ -305,6 +314,36 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
+    def backup_and_clear_points_values_after_reset(self, global_uuid, last_sync_id, last_sync_ts_value):
+        backup_query = f'INSERT INTO {self.__points_values_backup_table_name} ' \
+                       f'SELECT tpv.id as id, tpv.point_uuid as point_uuid, tpv.value as value, ' \
+                       f'tpv.value_original as value_original, tpv.value_raw as value_raw, tpv.fault as fault, ' \
+                       f'tpv.fault_message as fault_message, tpv.ts_value as ts_value, tpv.ts_fault as ts_fault ' \
+                       f'FROM {self.__points_values_table_name} tpv ' \
+                       f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                       f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                       f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                       f'WHERE tn.wires_plat_global_uuid = %s AND tpv.id <= %s AND tpv.ts_value <= %s ' \
+                       f'ON CONFLICT (id, point_uuid) DO NOTHING;'
+        delete_query = f'DELETE FROM {self.__points_values_table_name} tpv ' \
+                       f'USING {self.__points_table_name} tp, {self.__devices_table_name} td, ' \
+                       f'{self.__networks_table_name} tn ' \
+                       f'WHERE (tpv.point_uuid = tp.uuid) AND (tp.device_uuid = td.uuid) AND ' \
+                       f'(td.network_uuid = tn.uuid) AND tn.wires_plat_global_uuid = %s AND tpv.id <= %s AND ' \
+                       f'tpv.ts_value <= %s'
+        with self.__client:
+            with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
+                try:
+                    if self.config.backup:
+                        logger.info(
+                            f'Backing data upto: {last_sync_id}, global_uuid={global_uuid}')
+                        curs.execute(backup_query, (global_uuid, last_sync_id, last_sync_ts_value))
+                    logger.info(
+                        f'Clearing data upto: {last_sync_id}, global_uuid={global_uuid}')
+                    curs.execute(delete_query, (global_uuid, last_sync_id, last_sync_ts_value))
+                except psycopg2.Error as e:
+                    logger.error(str(e))
+
     def get_bulk_points_values(self, wires_plats):
         if not wires_plats:
             return []
@@ -312,7 +351,12 @@ class PostgreSQL(metaclass=Singleton):
         for wp in wires_plats:
             global_uuid = wp[0]
             last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
-            condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id}) OR "
+            if not self.config.all_rows and last_sync_id == 0:
+                last_sync_ts_value = self.get_last_sync_ts_value(global_uuid)
+                condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id} AND " \
+                                        f"tpv.ts_value>'{last_sync_ts_value}') OR "
+            else:
+                condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id}) OR "
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
                 f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name, ' \
                 f'tn.wires_plat_global_uuid as global_uuid FROM {self.__points_values_table_name} tpv ' \
@@ -328,6 +372,51 @@ class PostgreSQL(metaclass=Singleton):
                     return curs.fetchall()
                 except psycopg2.Error as e:
                     logger.error(str(e))
+
+    def get_last_sync_ts_value(self, global_uuid):
+        last_sync_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+        last_sync_ts_value = PostgersSyncLogModel.get_last_sync_ts_value(global_uuid) or datetime.min
+        if last_sync_ts_value == datetime.min:
+            query = f'SELECT tpv.ts_value as ts FROM {self.__points_values_table_name} tpv ' \
+                    f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                    f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                    f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                    f"WHERE tn.wires_plat_global_uuid = %s AND tpv.id = %s;"
+            with self.__client:
+                with self.__client.cursor() as curs:
+                    try:
+                        curs.execute(query, (global_uuid, last_sync_id,))
+                        ts_value = curs.fetchone()
+                        if ts_value:
+                            last_sync_ts_value = ts_value[0]
+                    except psycopg2.Error as e:
+                        logger.error(str(e))
+        return last_sync_ts_value
+
+    def check_and_reset_postgres_sync_log(self, wires_plat):
+        if not wires_plat and self.config.all_rows:
+            return None
+        global_uuid = wires_plat[0]
+        last_sync_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
+        last_sync_ts_value = self.get_last_sync_ts_value(global_uuid)
+        query = f'SELECT COUNT(tpv.id) as ts FROM {self.__points_values_table_name} tpv ' \
+                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                f"WHERE tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id<{last_sync_id} " \
+                f"AND tpv.ts_value>'{last_sync_ts_value}';"
+        count = 0
+        with self.__client:
+            with self.__client.cursor() as curs:
+                try:
+                    curs.execute(query)
+                    count = curs.fetchone()[0]
+                except psycopg2.Error as e:
+                    logger.error(str(e))
+        if count > 0:
+            PostgersSyncLogModel(global_uuid=global_uuid,
+                                 last_sync_id=0).update_last_sync_id()
+            self.backup_and_clear_points_values_after_reset(global_uuid, last_sync_id, last_sync_ts_value)
 
     def create_table_if_not_exists(self):
         query_point_value_data = f'CREATE TABLE IF NOT EXISTS {self.__points_values_backup_table_name} ' \
