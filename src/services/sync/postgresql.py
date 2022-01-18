@@ -329,6 +329,21 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
+    def get_point_value_max_sync_id(self, global_uuid) -> int:
+        query = f'SELECT MAX(tpv.id) FROM {self.__points_values_table_name} tpv ' \
+                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
+                f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
+                f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
+                f'WHERE tn.wires_plat_global_uuid = %s;'
+        with self.__client:
+            with self.__client.cursor() as curs:
+                try:
+                    curs.execute(query, (global_uuid,))
+                    return curs.fetchone()[0] or 0
+                except psycopg2.Error as e:
+                    logger.error(str(e))
+                    return 0
+
     def create_table_if_not_exists(self):
         query_point_value_data = f'CREATE TABLE IF NOT EXISTS {self.__points_values_backup_table_name} ' \
                                  f'(id INTEGER, ' \
