@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.3.0](https://github.com/NubeIO/rubix-service/tree/v1.3.0) (2022-01-30)
+- Add sync logs api endpoints
+
 ## [v1.2.0](https://github.com/NubeIO/rubix-service/tree/v1.2.0) (2021-08-18)
 - Push all devices output on a bulk
 
