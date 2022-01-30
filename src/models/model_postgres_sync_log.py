@@ -7,6 +7,10 @@ class PostgersSyncLogModel(ModelBase):
     global_uuid = db.Column(db.String(80), primary_key=True, nullable=False)
     last_sync_id = db.Column(db.Integer(), nullable=False, default=0)
 
+    @classmethod
+    def find_by_global_uuid(cls, global_uuid: str):
+        return cls.query.filter_by(global_uuid=global_uuid).first()
+
     def update_last_sync_id(self):
         log = self.query.filter_by(global_uuid=self.global_uuid).first()
         if log:

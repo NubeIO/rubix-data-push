@@ -1,3 +1,5 @@
+from sqlalchemy import inspect
+
 from src import db
 
 
@@ -40,3 +42,7 @@ class ModelBase(db.Model):
     def delete_from_db(self):
         db.session.delete(self)
         db.session.commit()
+
+    def to_dict(self) -> dict:
+        return {c.key: str(getattr(self, c.key))
+                for c in inspect(self).mapper.column_attrs}
