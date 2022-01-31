@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.3.1](https://github.com/NubeIO/rubix-service/tree/v1.3.1) (2022-01-31)
+- Add sync logs api endpoints improvements
+
 ## [v1.3.0](https://github.com/NubeIO/rubix-service/tree/v1.3.0) (2022-01-30)
 - Add sync logs api endpoints
 
