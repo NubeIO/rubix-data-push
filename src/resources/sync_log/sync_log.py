@@ -13,11 +13,13 @@ class SyncLog(RubixResource):
     def get(cls):
         logs_details = []
         logs = PostgersSyncLogModel.find_all()
+        try:
+            max_sync_ids = PostgreSQL().get_point_value_max_sync_ids()
+        except Exception:
+            raise PreConditionException("Unable to connect PostgreSQL")
         for log in logs:
-            try:
-                max_sync_id = PostgreSQL().get_point_value_max_sync_id(log.global_uuid)
-            except Exception:
-                raise PreConditionException("Unable to connect PostgreSQL")
+            max_sync_id = next(
+                (v['max'] for i, v in enumerate(max_sync_ids) if v['wires_plat_global_uuid'] == log.global_uuid), None)
             logs_details.append({**log.to_dict(), 'max_sync_id': max_sync_id})
         return logs_details
 
