@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.3.2](https://github.com/NubeIO/rubix-service/tree/v1.3.2) (2022-11-02)
+- Make it runnable for old RaspberryPi devices as well
+
 ## [v1.3.1](https://github.com/NubeIO/rubix-service/tree/v1.3.1) (2022-01-31)
 - Add sync logs api endpoints improvements
 
