@@ -12,10 +12,13 @@ class PostgersSyncLogModel(ModelBase):
     def find_by_global_uuid(cls, global_uuid: str):
         return cls.query.filter_by(global_uuid=global_uuid).first()
 
-    def update_last_sync_id_to_envizi(self):
+    def update_sync_log(self):
         log = self.query.filter_by(global_uuid=self.global_uuid).first()
         if log:
-            log.update(**{'last_sync_id_to_envizi': self.last_sync_id_to_envizi})
+            log.update(**{
+                'last_sync_id_to_envizi': self.last_sync_id_to_envizi,
+                'last_sync_datetime_to_envizi': self.last_sync_datetime_to_envizi
+            })
         else:
             self.save_to_db()
 

@@ -236,7 +236,7 @@ class PostgreSQL(metaclass=Singleton):
                     PostgersSyncLogModel(global_uuid=global_uuid,
                                          last_sync_id_to_envizi=last_sync_id_to_envizi,
                                          last_sync_datetime_to_envizi=datetime.utcnow()). \
-                        update_last_sync_id_to_envizi()
+                        update_sync_log()
             else:
                 logger.error("Failure on sending...")
                 self.__success_loop_count = 0

@@ -93,7 +93,7 @@ class SyncLogByGlobalUUID(RubixResource):
         if sync_log is None:
             raise NotFoundException(f"Sync log not found")
         sync_log.last_sync_id_to_envizi = data.get('last_sync_id_to_envizi', 0)
-        sync_log.update_last_sync_id_to_envizi()
+        sync_log.update_sync_log()
         return sync_log
 
     @classmethod
