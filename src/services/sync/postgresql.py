@@ -140,8 +140,8 @@ class PostgreSQL(metaclass=Singleton):
 
             last_id = points_values[0]['id']
             first_id = points_values[len(points_values) - 1]['id']
-            last_synced_id = PostgersSyncLogModel.get_last_sync_id(global_uuid)
-            if last_id - first_id + 1 != len(points_values) or first_id - 1 != last_synced_id:
+            last_synced_id_to_envizi = PostgersSyncLogModel.get_last_sync_id_to_envizi(global_uuid)
+            if last_id - first_id + 1 != len(points_values) or first_id - 1 != last_synced_id_to_envizi:
                 if not self.__device_loop_counts.get(global_uuid):
                     self.__device_loop_counts[global_uuid] = 0
 
@@ -149,7 +149,8 @@ class PostgreSQL(metaclass=Singleton):
                     self.__device_loop_counts[global_uuid] += 1
                     logger.warning(f"Skipping... global_uuid={global_uuid}, coz all values might not yet synced yet, "
                                    f"loop_count={self.__device_loop_counts[global_uuid]}, size={len(points_values)}, "
-                                   f"first_id={first_id}, last_id={last_id}, last_synced_id={last_synced_id}...")
+                                   f"first_id={first_id}, last_id={last_id}, "
+                                   f"last_synced_id_to_envizi={last_synced_id_to_envizi}...")
                     continue
                 else:
                     self.__device_loop_counts[global_uuid] = 0
@@ -228,11 +229,14 @@ class PostgreSQL(metaclass=Singleton):
             resp = requests.post(self.__client_token_url, json=json_payload, verify=self.config.verify_ssl)
             # they are returning 200 status even on failure
             if 200 <= resp.status_code < 300 and 'SUCCESS' in str(resp.content):
-                for global_uuid, last_sync_id in updates.items():
+                for global_uuid, last_sync_id_to_envizi in updates.items():
                     logger.info(
-                        f"Updating postgres_sync_logs: (global_uuid={global_uuid}, last_sync_id={last_sync_id})")
+                        f"Updating postgres_sync_logs: (global_uuid={global_uuid}, "
+                        f"last_sync_id_to_envizi={last_sync_id_to_envizi})")
                     PostgersSyncLogModel(global_uuid=global_uuid,
-                                         last_sync_id=last_sync_id).update_last_sync_id()
+                                         last_sync_id_to_envizi=last_sync_id_to_envizi,
+                                         last_sync_datetime_to_envizi=datetime.utcnow()). \
+                        update_last_sync_id_to_envizi()
             else:
                 logger.error("Failure on sending...")
                 self.__success_loop_count = 0
@@ -312,8 +316,10 @@ class PostgreSQL(metaclass=Singleton):
         condition: str = ''
         for wp in wires_plats:
             global_uuid = wp[0]
-            last_sync_id = 0 if self.config.all_rows else PostgersSyncLogModel.get_last_sync_id(global_uuid)
-            condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' AND tpv.id>{last_sync_id}) OR "
+            last_sync_id_to_envizi = 0 if self.config.all_rows else \
+                PostgersSyncLogModel.get_last_sync_id_to_envizi(global_uuid)
+            condition = condition + f"(tn.wires_plat_global_uuid='{global_uuid}' " \
+                                    f"AND tpv.id>{last_sync_id_to_envizi}) OR "
         query = f'SELECT tpv.id, tpv.ts_value as ts, tpv.value, tp.uuid as point_uuid, tp.name as point_name, ' \
                 f'td.uuid as device_uuid, td.name as device_name, tn.uuid as network_uuid, tn.name as network_name, ' \
                 f'tn.wires_plat_global_uuid as global_uuid FROM {self.__points_values_table_name} tpv ' \
@@ -330,27 +336,42 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error(str(e))
 
-    def get_point_value_max_sync_id(self, global_uuid) -> int:
-        query = f'SELECT MAX(tpv.id) FROM {self.__points_values_table_name} tpv ' \
-                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
-                f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
-                f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                f'WHERE tn.wires_plat_global_uuid = %s;'
+    def get_postgres_sync_row_details(self, global_uuid):
+        null_out = None, None, None, None
+        query = f'WITH temp_table AS (' \
+                f'SELECT tn.wires_plat_global_uuid AS global_uuid, tpv.id AS latest_sync_id, ' \
+                f'tpv.ts_value AS latest_sync_datetime, ' \
+                f'MAX(id) OVER(PARTITION BY tn.wires_plat_global_uuid) AS max_sync_id, ' \
+                f'ROW_NUMBER() OVER(PARTITION BY tn.wires_plat_global_uuid ORDER BY tpv.ts_value DESC, tpv.id DESC) ' \
+                f'AS rank ' \
+                f'FROM {self.__networks_table_name} tn ' \
+                f'INNER JOIN {self.__devices_table_name} td on tn.uuid=td.network_uuid ' \
+                f'INNER JOIN {self.__points_table_name} tp on td.uuid=tp.device_uuid ' \
+                f'INNER JOIN {self.__points_values_table_name} tpv on tp.uuid=tpv.point_uuid) ' \
+                f'SELECT global_uuid, latest_sync_id, latest_sync_datetime, max_sync_id FROM temp_table WHERE rank=1 ' \
+                f'AND global_uuid=%s;'
         with self.__client:
             with self.__client.cursor() as curs:
                 try:
                     curs.execute(query, (global_uuid,))
-                    return curs.fetchone()[0] or 0
+                    out = curs.fetchone()
+                    return out if out is not None else null_out
                 except psycopg2.Error as e:
                     logger.error(str(e))
-                    return 0
+                    return null_out
 
-    def get_point_value_max_sync_ids(self):
-        query = f'SELECT DISTINCT(tn.wires_plat_global_uuid),MAX(tpv.id) FROM {self.__points_values_table_name} tpv ' \
-                f'INNER JOIN {self.__points_table_name} tp ON tpv.point_uuid = tp.uuid ' \
-                f'INNER JOIN {self.__devices_table_name} td ON tp.device_uuid = td.uuid ' \
-                f'INNER JOIN {self.__networks_table_name} tn ON td.network_uuid = tn.uuid ' \
-                f'GROUP BY tn.wires_plat_global_uuid;'
+    def get_postgres_sync_rows_details(self):
+        query = f'WITH temp_table AS (' \
+                f'SELECT tn.wires_plat_global_uuid AS global_uuid, tpv.id AS latest_sync_id, ' \
+                f'tpv.ts_value AS latest_sync_datetime, ' \
+                f'MAX(id) OVER(PARTITION BY tn.wires_plat_global_uuid) AS max_sync_id, ' \
+                f'ROW_NUMBER() OVER(PARTITION BY tn.wires_plat_global_uuid ORDER BY tpv.ts_value DESC, tpv.id DESC) ' \
+                f'AS rank ' \
+                f'FROM {self.__networks_table_name} tn ' \
+                f'INNER JOIN {self.__devices_table_name} td on tn.uuid=td.network_uuid ' \
+                f'INNER JOIN {self.__points_table_name} tp on td.uuid=tp.device_uuid ' \
+                f'INNER JOIN {self.__points_values_table_name} tpv on tp.uuid=tpv.point_uuid) ' \
+                f'SELECT global_uuid, latest_sync_id, latest_sync_datetime, max_sync_id FROM temp_table WHERE rank=1;'
         with self.__client:
             with self.__client.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as curs:
                 try:
@@ -358,6 +379,7 @@ class PostgreSQL(metaclass=Singleton):
                     return curs.fetchall()
                 except psycopg2.Error as e:
                     logger.error(str(e))
+                    return dict(global_uuid=None, latest_sync_id=None, latest_sync_datetime=None, max_sync_id=None)
 
     def create_table_if_not_exists(self):
         query_point_value_data = f'CREATE TABLE IF NOT EXISTS {self.__points_values_backup_table_name} ' \
