@@ -379,7 +379,7 @@ class PostgreSQL(metaclass=Singleton):
                     return curs.fetchall()
                 except psycopg2.Error as e:
                     logger.error(str(e))
-                    return dict(global_uuid=None, latest_sync_id=None, latest_sync_datetime=None, max_sync_id=None)
+                    return []
 
     def create_table_if_not_exists(self):
         query_point_value_data = f'CREATE TABLE IF NOT EXISTS {self.__points_values_backup_table_name} ' \
