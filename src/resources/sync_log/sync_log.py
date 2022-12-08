@@ -96,6 +96,15 @@ class SyncLogByGlobalUUID(RubixResource):
         sync_log.update_last_sync_id_to_envizi()
         return sync_log
 
+    @classmethod
+    @marshal_with(sync_log_fields)
+    def delete(cls, global_uuid: str):
+        sync_log: PostgersSyncLogModel = PostgersSyncLogModel.find_by_global_uuid(global_uuid)
+        if sync_log is not None:
+            sync_log.delete_from_db()
+        PostgreSQL().delete_postgres_data(global_uuid)
+        return '', 204
+
 
 def get_not_none_datetime_value(log_dict):
     last_sync_datetime_to_envizi = log_dict.get('last_sync_datetime_to_envizi')

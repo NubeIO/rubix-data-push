@@ -401,3 +401,22 @@ class PostgreSQL(metaclass=Singleton):
                     curs.execute(query_point_value_data)
                 except psycopg2.Error as e:
                     logger.error(str(e))
+
+    def delete_postgres_data(self, global_uuid: str):
+        query = f'DELETE FROM {self.__points_values_table_name} WHERE point_uuid IN (' \
+                f'SELECT point_uuid FROM (' \
+                f'SELECT * FROM (' \
+                f'SELECT * FROM (' \
+                f'SELECT * FROM (' \
+                f'SELECT * FROM {self.__points_values_table_name} AS pv ' \
+                f'LEFT JOIN tbl_points AS p ON pv.point_uuid=p.uuid) AS ppv ' \
+                f'LEFT JOIN tbl_devices AS d ON ppv.device_uuid=d.uuid) AS pd ' \
+                f'LEFT JOIN tbl_networks AS n ON pd.network_uuid=n.uuid) AS pdn ' \
+                f'LEFT JOIN tbl_wires_plats AS w ON w.global_uuid=pdn.wires_plat_global_uuid ' \
+                f'WHERE w.global_uuid=%s) as final);'
+        with self.__client:
+            with self.__client.cursor() as curs:
+                try:
+                    curs.execute(query, (global_uuid,))
+                except psycopg2.Error as e:
+                    logger.error(str(e))
