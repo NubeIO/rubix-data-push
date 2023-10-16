@@ -106,14 +106,21 @@ class PostgreSQL(metaclass=Singleton):
     @exception_handler
     def sync(self):
         """See the payload example in README"""
-        wires_plats_list: List = self.get_wires_plat()
+        wires_plats_list: Union[List, None] = self.get_wires_plat()
+        if not self.status() or wires_plats_list is None:
+            return
         gevent.sleep(1)
         self.__loop_count += 1
         self.__success_loop_count += 1
         logger.info("Fresh loop started...")
         if self.__success_loop_count > self.config.max_success_loop_count:
             self.__success_loop_count = 0
-            self.backup_and_clear_points_values()
+            try:
+                self.backup_and_clear_points_values()
+            except Exception as e:
+                logger.error(f'Error: {e}')
+                self.connect()
+                return
         wires_plats_list = [wires_plats_list[i:i + self.config.count] for i in
                             range(0, len(wires_plats_list), self.config.count)]
         for wires_plats in wires_plats_list:
@@ -123,8 +130,13 @@ class PostgreSQL(metaclass=Singleton):
     def sync_device(self, wires_plats):
         payloads: List = []
         updates: dict = {}
-        bulk_points_values = self.get_bulk_points_values(wires_plats)
-        if not bulk_points_values:
+        try:
+            bulk_points_values = self.get_bulk_points_values(wires_plats)
+            if not bulk_points_values:
+                return
+        except Exception as e:
+            logger.error(f'Error: {e}')
+            self.connect()
             return
         for wires_plat in wires_plats:
             self.__device_count += 1
@@ -261,7 +273,7 @@ class PostgreSQL(metaclass=Singleton):
                 except psycopg2.Error as e:
                     logger.error((str(e)))
 
-    def get_wires_plat(self) -> List:
+    def get_wires_plat(self) -> Union[List, None]:
         """
         This function will return wires_plat and if connection is already closed then we try to reconnect too
         """
@@ -280,6 +292,7 @@ class PostgreSQL(metaclass=Singleton):
         except Exception as e:
             logger.error(f'Error: {e}')
             self.connect()
+            return None
         return []
 
     def backup_and_clear_points_values(self):
