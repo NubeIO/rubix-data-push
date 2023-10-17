@@ -14,7 +14,9 @@ RUN apt install zlib1g -y
 RUN apt install zlib1g-dev -y
 RUN apt install libpq-dev -y
 RUN apt install python-dev -y
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | POETRY_VERSION=1.1.13 python3
+
+COPY docker/get-poetry.py get-poetry.py
+RUN POETRY_VERSION=1.1.13 python3 get-poetry.py
 
 WORKDIR /usr/src/app/
 ADD poetry.lock pyproject.toml ./

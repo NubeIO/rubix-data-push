@@ -42,7 +42,7 @@ class PostgreSQL(metaclass=Singleton):
         return self.__config
 
     def status(self) -> bool:
-        return self.__is_connected
+        return self.__is_connected and self.__client and not self.__client.closed
 
     def disconnect(self):
         self.__is_connected = False
@@ -107,6 +107,9 @@ class PostgreSQL(metaclass=Singleton):
     def sync(self):
         """See the payload example in README"""
         wires_plats_list: List = self.get_wires_plat()
+        if not self.status():  # reconnect in case of postgres connection gets down
+            self.connect()
+            return
         gevent.sleep(1)
         self.__loop_count += 1
         self.__success_loop_count += 1
@@ -279,7 +282,6 @@ class PostgreSQL(metaclass=Singleton):
                         logger.error((str(e)))
         except Exception as e:
             logger.error(f'Error: {e}')
-            self.connect()
         return []
 
     def backup_and_clear_points_values(self):
