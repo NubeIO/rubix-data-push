@@ -1,4 +1,7 @@
 # CHANGELOG
+## [v1.4.1](https://github.com/NubeIO/rubix-data-push/tree/v1.4.1) (2023-10-17)
+- Fix: Postgres reconnection issue
+
 ## [v1.4.0](https://github.com/NubeIO/rubix-data-push/tree/v1.4.0) (2022-12-08)
 - Add additional fields on the sync status
     - Old DB needs to be migrated manually or deleted
